@@ -6,6 +6,9 @@ const expenseSchema = new mongoose.Schema(
     invoiceNumber: { type: String, default: '', trim: true },
     totalAmount: { type: Number, required: true, min: 0 },
     status: { type: String, enum: ['Paid', 'Unpaid'], default: 'Unpaid' },
+    invoiceDate: { type: Date },
+    pdfUrl: { type: String, default: '' },
+    pdfKey: { type: String, default: '' },
   },
   { _id: true, timestamps: false }
 );

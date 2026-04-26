@@ -1,6 +1,16 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Plus, Printer, Save, Trash2, AlertTriangle } from 'lucide-react';
-import { monthlyReportService } from '../../services/api';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Plus,
+  Printer,
+  Save,
+  Trash2,
+  AlertTriangle,
+  Upload,
+  FileText,
+  Loader2,
+  FileDown,
+} from 'lucide-react';
+import { monthlyReportService, expenseService, bundlePdfUrl } from '../../services/api';
 
 const MONTH_NAMES = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -32,6 +42,8 @@ function MonthlyReportTab() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [savedAt, setSavedAt] = useState(null);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef(null);
 
   const load = async (y, m) => {
     setLoading(true);
@@ -104,6 +116,36 @@ function MonthlyReportTab() {
     }));
   };
 
+  const handleUploadInvoice = async (file) => {
+    if (!file) return;
+    setUploading(true);
+    setError('');
+    try {
+      const res = await expenseService.uploadInvoice(file);
+      const e = res.data;
+      setReport((r) => ({
+        ...r,
+        expenses: [
+          ...r.expenses,
+          {
+            companyName: e.companyName || '',
+            invoiceNumber: e.invoiceNumber || '',
+            totalAmount: num(e.totalAmount),
+            status: 'Unpaid',
+            invoiceDate: e.invoiceDate || null,
+            pdfUrl: e.pdfUrl || '',
+            pdfKey: e.pdfKey || '',
+          },
+        ],
+      }));
+    } catch (err) {
+      setError(err.response?.data?.message || err.message || 'Upload failed');
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
   const updateExpense = (index, key, value) => {
     setReport((r) => ({
       ...r,
@@ -112,10 +154,13 @@ function MonthlyReportTab() {
   };
 
   const removeExpense = (index) => {
-    setReport((r) => ({
-      ...r,
-      expenses: r.expenses.filter((_, i) => i !== index),
-    }));
+    setReport((r) => {
+      const target = r.expenses[index];
+      if (target?.pdfKey) {
+        expenseService.deleteFile(target.pdfKey).catch(() => {});
+      }
+      return { ...r, expenses: r.expenses.filter((_, i) => i !== index) };
+    });
   };
 
   const handleSave = async () => {
@@ -136,6 +181,9 @@ function MonthlyReportTab() {
           invoiceNumber: e.invoiceNumber,
           totalAmount: num(e.totalAmount),
           status: e.status,
+          invoiceDate: e.invoiceDate || undefined,
+          pdfUrl: e.pdfUrl || '',
+          pdfKey: e.pdfKey || '',
         })),
       });
       setSavedAt(new Date());
@@ -204,12 +252,23 @@ function MonthlyReportTab() {
             <Save className="w-4 h-4" />
             {saving ? 'Saving…' : 'Save Report'}
           </button>
+          <a
+            href={bundlePdfUrl(year, month)}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white text-sm font-bold px-4 py-2.5 rounded-lg shadow-md shadow-red-900/20"
+            title="Opens a single PDF with the report and every uploaded invoice"
+          >
+            <FileDown className="w-4 h-4" />
+            Print with Invoices
+          </a>
           <button
             onClick={() => window.print()}
-            className="inline-flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white text-sm font-bold px-4 py-2.5 rounded-lg shadow-md shadow-red-900/20"
+            className="inline-flex items-center gap-2 bg-white hover:bg-slate-50 text-black border-2 border-slate-200 text-sm font-bold px-4 py-2.5 rounded-lg"
+            title="Print just the on-screen report"
           >
             <Printer className="w-4 h-4" />
-            Print A4
+            Print Report Only
           </button>
         </div>
       </div>
@@ -312,11 +371,25 @@ function MonthlyReportTab() {
                       report.expenses.map((e, i) => (
                         <tr key={i} className="border-b border-slate-100">
                           <td className="py-2 pr-2">
-                            <CellInput
-                              value={e.companyName}
-                              onChange={(v) => updateExpense(i, 'companyName', v)}
-                              placeholder="Supplier"
-                            />
+                            <div className="flex items-center gap-1">
+                              <CellInput
+                                value={e.companyName}
+                                onChange={(v) => updateExpense(i, 'companyName', v)}
+                                placeholder="Supplier"
+                              />
+                              {e.pdfUrl && (
+                                <a
+                                  href={e.pdfUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="shrink-0 inline-flex items-center gap-0.5 text-[10px] font-bold text-red-600 hover:text-red-700 px-1.5 py-0.5 rounded bg-red-50 border border-red-100 print:hidden"
+                                  title="Open uploaded invoice"
+                                >
+                                  <FileText className="w-3 h-3" />
+                                  PDF
+                                </a>
+                              )}
+                            </div>
                           </td>
                           <td className="py-2 px-2">
                             <CellInput
@@ -364,13 +437,34 @@ function MonthlyReportTab() {
                 </table>
               </div>
 
-              <button
-                onClick={addExpense}
-                className="mt-3 inline-flex items-center gap-1.5 text-xs font-bold text-red-600 hover:text-red-700 print:hidden"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                Add Expense
-              </button>
+              <div className="mt-3 flex items-center gap-3 print:hidden">
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploading}
+                  className="inline-flex items-center gap-1.5 text-xs font-bold bg-black text-white hover:bg-slate-800 px-3 py-1.5 rounded-md disabled:opacity-60"
+                >
+                  {uploading ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Upload className="w-3.5 h-3.5" />
+                  )}
+                  {uploading ? 'Reading invoice…' : 'Upload Invoice (PDF / image)'}
+                </button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="application/pdf,image/*"
+                  className="hidden"
+                  onChange={(e) => handleUploadInvoice(e.target.files?.[0])}
+                />
+                <button
+                  onClick={addExpense}
+                  className="inline-flex items-center gap-1.5 text-xs font-bold text-red-600 hover:text-red-700"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  Add Manually
+                </button>
+              </div>
             </Section>
 
             {/* Summary */}

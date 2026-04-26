@@ -1,7 +1,9 @@
 import axios from 'axios';
 
+const apiBase = (import.meta.env.VITE_API_URL || 'http://localhost:5000').replace(/\/$/, '');
+
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5000/api',
+  baseURL: `${apiBase}/api`,
 });
 
 export const orderService = {
@@ -47,5 +49,19 @@ export const announcementService = {
   update: (id, data) => api.patch(`/announcements/${id}`, data),
   remove: (id) => api.delete(`/announcements/${id}`),
 };
+
+export const expenseService = {
+  uploadInvoice: (file) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    return api.post('/expenses/upload', fd, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
+  deleteFile: (key) => api.post('/expenses/delete-file', { key }),
+};
+
+export const bundlePdfUrl = (year, month) =>
+  `${apiBase}/api/monthly-reports/${year}/${month}/bundle.pdf`;
 
 export default api;

@@ -8,6 +8,7 @@ const partnerRoutes = require('./routes/partnerRoutes');
 const monthlyReportRoutes = require('./routes/monthlyReportRoutes');
 const knowledgeRoutes = require('./routes/knowledgeRoutes');
 const announcementRoutes = require('./routes/announcementRoutes');
+const expenseRoutes = require('./routes/expenseRoutes');
 
 dotenv.config();
 
@@ -28,6 +29,7 @@ app.use('/api/partners', partnerRoutes);
 app.use('/api/monthly-reports', monthlyReportRoutes);
 app.use('/api/knowledge', knowledgeRoutes);
 app.use('/api/announcements', announcementRoutes);
+app.use('/api/expenses', expenseRoutes);
 
 app.use((err, req, res, next) => {
   console.error(err.stack);

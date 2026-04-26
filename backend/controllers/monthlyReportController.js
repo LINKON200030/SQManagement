@@ -1,4 +1,5 @@
 const MonthlyReport = require('../models/MonthlyReport');
+const { buildBundlePdf } = require('../lib/reportPdf');
 
 const buildKey = (year, month) =>
   `${year}-${String(month).padStart(2, '0')}`;
@@ -74,4 +75,24 @@ const deleteReport = async (req, res) => {
   }
 };
 
-module.exports = { listReports, getReport, upsertReport, deleteReport };
+const downloadBundle = async (req, res) => {
+  try {
+    const { year, month } = req.params;
+    const monthKey = buildKey(year, month);
+    const report = await MonthlyReport.findOne({ monthKey });
+    if (!report) return res.status(404).json({ message: 'Report not found' });
+
+    const pdfBuffer = await buildBundlePdf(report.toObject());
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `inline; filename="monthly-report-${monthKey}.pdf"`,
+      'Content-Length': pdfBuffer.length,
+    });
+    res.send(pdfBuffer);
+  } catch (error) {
+    console.error('downloadBundle error:', error);
+    res.status(500).json({ message: error.message });
+  }
+};
+
+module.exports = { listReports, getReport, upsertReport, deleteReport, downloadBundle };
