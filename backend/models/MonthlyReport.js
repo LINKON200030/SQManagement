@@ -1,5 +1,14 @@
 const mongoose = require('mongoose');
 
+const attachmentSchema = new mongoose.Schema(
+  {
+    pdfUrl: { type: String, default: '' },
+    pdfKey: { type: String, default: '' },
+    originalName: { type: String, default: '' },
+  },
+  { _id: false }
+);
+
 const expenseSchema = new mongoose.Schema(
   {
     companyName: { type: String, required: true, trim: true },
@@ -9,6 +18,7 @@ const expenseSchema = new mongoose.Schema(
     invoiceDate: { type: Date },
     pdfUrl: { type: String, default: '' },
     pdfKey: { type: String, default: '' },
+    attachments: { type: [attachmentSchema], default: [] },
   },
   { _id: true, timestamps: false }
 );

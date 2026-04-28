@@ -84,7 +84,10 @@ const buildReportPdf = (report) =>
 
           doc.font('Helvetica').fontSize(10).fillColor('#000');
           doc.text(e.companyName || '', colX.name, rowY, { width: 180 });
-          doc.text(e.invoiceNumber || '—', colX.inv, rowY, { width: 140 });
+          const attCount = Array.isArray(e.attachments) ? e.attachments.length : 0;
+          const invoiceLabel =
+            attCount > 0 ? String(attCount) : e.invoiceNumber || '—';
+          doc.text(invoiceLabel, colX.inv, rowY, { width: 140 });
           doc.text(fmt(amt), colX.total, rowY, { width: 80, align: 'right' });
           doc.fillColor(e.status === 'Paid' ? '#047857' : '#b91c1c')
             .text(e.status || 'Unpaid', colX.status, rowY);
@@ -159,14 +162,22 @@ const buildBundlePdf = async (report) => {
 
   const expenses = report.expenses || [];
   for (const e of expenses) {
-    if (!e.pdfKey) continue;
-    try {
-      const buf = await getObjectBuffer(e.pdfKey);
-      const invoiceDoc = await PDFLibDocument.load(buf, { ignoreEncryption: true });
-      const invoicePages = await merged.copyPages(invoiceDoc, invoiceDoc.getPageIndices());
-      invoicePages.forEach((p) => merged.addPage(p));
-    } catch (err) {
-      console.warn('Skipping invoice in bundle (load failed):', e.pdfKey, err.message);
+    const attachments =
+      Array.isArray(e.attachments) && e.attachments.length > 0
+        ? e.attachments
+        : e.pdfKey
+        ? [{ pdfKey: e.pdfKey, pdfUrl: e.pdfUrl }]
+        : [];
+    for (const att of attachments) {
+      if (!att.pdfKey) continue;
+      try {
+        const buf = await getObjectBuffer(att.pdfKey);
+        const invoiceDoc = await PDFLibDocument.load(buf, { ignoreEncryption: true });
+        const invoicePages = await merged.copyPages(invoiceDoc, invoiceDoc.getPageIndices());
+        invoicePages.forEach((p) => merged.addPage(p));
+      } catch (err) {
+        console.warn('Skipping invoice in bundle (load failed):', att.pdfKey, err.message);
+      }
     }
   }
 
