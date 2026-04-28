@@ -5,15 +5,21 @@ const createOrder = async (req, res) => {
   try {
     const { customerName, customerPhone, customerEmail } = req.body;
 
-    if (!customerName || !customerPhone || !customerEmail) {
-      return res.status(400).json({ message: 'Customer name, phone and email are required' });
+    const phone = (customerPhone || '').trim();
+    const email = (customerEmail || '').trim().toLowerCase();
+
+    if (!customerName || (!phone && !email)) {
+      return res
+        .status(400)
+        .json({ message: 'Customer name and either phone or email are required' });
     }
 
-    const phone = customerPhone.trim();
-    const email = customerEmail.trim().toLowerCase();
+    const lookup = [];
+    if (phone) lookup.push({ phone });
+    if (email) lookup.push({ email });
 
     let customer = await Customer.findOneAndUpdate(
-      { $or: [{ phone }, { email }] },
+      { $or: lookup },
       { $inc: { ordersCount: 1 } },
       { new: true }
     );

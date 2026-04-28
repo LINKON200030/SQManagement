@@ -129,14 +129,21 @@ function CustomersPage() {
                       </div>
                     </td>
                     <td className="px-5 py-3.5 text-slate-600">
-                      <p className="flex items-center gap-1.5">
-                        <Mail className="w-3.5 h-3.5 text-slate-400" />
-                        {c.email}
-                      </p>
-                      <p className="flex items-center gap-1.5 text-xs text-slate-400 mt-0.5">
-                        <Phone className="w-3.5 h-3.5" />
-                        {c.phone}
-                      </p>
+                      {c.email && (
+                        <p className="flex items-center gap-1.5">
+                          <Mail className="w-3.5 h-3.5 text-slate-400" />
+                          {c.email}
+                        </p>
+                      )}
+                      {c.phone && (
+                        <p className="flex items-center gap-1.5 text-xs text-slate-400 mt-0.5">
+                          <Phone className="w-3.5 h-3.5" />
+                          {c.phone}
+                        </p>
+                      )}
+                      {!c.email && !c.phone && (
+                        <span className="text-xs text-slate-400 italic">No contact</span>
+                      )}
                     </td>
                     <td className="px-5 py-3.5">
                       <span className="inline-flex items-center justify-center min-w-[2rem] h-7 px-2 rounded-full bg-red-600 text-white text-xs font-extrabold">

@@ -31,12 +31,17 @@ function CreateOrderPage() {
   const validate = () => {
     const e = {};
     if (!form.customerName.trim()) e.customerName = 'Customer name is required';
-    if (!form.customerPhone.trim()) e.customerPhone = 'Phone number is required';
-    else if (!/^[0-9+\-\s()]{6,}$/.test(form.customerPhone.trim()))
-      e.customerPhone = 'Enter a valid phone number';
-    if (!form.customerEmail.trim()) e.customerEmail = 'Email is required';
-    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.customerEmail.trim()))
-      e.customerEmail = 'Enter a valid email';
+    const hasPhone = !!form.customerPhone.trim();
+    const hasEmail = !!form.customerEmail.trim();
+    if (!hasPhone && !hasEmail) {
+      e.customerPhone = 'Provide either a phone number or email';
+      e.customerEmail = 'Provide either a phone number or email';
+    } else {
+      if (hasPhone && !/^[0-9+\-\s()]{6,}$/.test(form.customerPhone.trim()))
+        e.customerPhone = 'Enter a valid phone number';
+      if (hasEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.customerEmail.trim()))
+        e.customerEmail = 'Enter a valid email';
+    }
     if (!form.title.trim()) e.title = 'Title is required';
     if (!form.price || Number(form.price) < 0) e.price = 'Enter a valid price';
     if (form.advancePaid !== '' && Number(form.advancePaid) < 0)
@@ -142,6 +147,9 @@ function CreateOrderPage() {
 
           {/* Customer info section */}
           <Section title="Customer Information">
+            <p className="text-[11px] text-slate-500 mb-3 -mt-1">
+              Phone or email is required — at least one of them must be filled in.
+            </p>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <Field label="Customer Name" required error={errors.customerName}>
                 <div className="relative">
@@ -156,7 +164,11 @@ function CreateOrderPage() {
                   />
                 </div>
               </Field>
-              <Field label="Phone Number" required error={errors.customerPhone}>
+              <Field
+                label="Phone Number"
+                hint="Phone or email"
+                error={errors.customerPhone}
+              >
                 <div className="relative">
                   <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                   <input
@@ -169,7 +181,11 @@ function CreateOrderPage() {
                   />
                 </div>
               </Field>
-              <Field label="Email" required error={errors.customerEmail}>
+              <Field
+                label="Email"
+                hint="Phone or email"
+                error={errors.customerEmail}
+              >
                 <div className="relative">
                   <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                   <input
@@ -388,12 +404,17 @@ function QuickChip({ children, onClick, disabled }) {
   );
 }
 
-function Field({ label, required, error, children }) {
+function Field({ label, required, error, hint, children }) {
   return (
     <div>
       <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-2">
         {label}
         {required && <span className="text-red-600 ml-1">*</span>}
+        {hint && (
+          <span className="ml-1.5 text-[10px] font-bold text-slate-400 normal-case tracking-normal">
+            ({hint})
+          </span>
+        )}
       </label>
       {children}
       {error && <p className="text-red-600 text-xs mt-1.5 font-semibold">{error}</p>}

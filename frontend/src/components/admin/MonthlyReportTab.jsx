@@ -9,6 +9,9 @@ import {
   FileText,
   Loader2,
   FileDown,
+  Building2,
+  ChevronDown,
+  ChevronRight,
 } from 'lucide-react';
 import { monthlyReportService, expenseService, bundlePdfUrl } from '../../services/api';
 
@@ -33,6 +36,11 @@ const num = (v) => {
   return Number.isFinite(n) ? n : 0;
 };
 
+// Stable key for grouping suppliers (case-insensitive, trimmed). Empty names
+// are bucketed as "unnamed" rather than collapsed together.
+const supplierKey = (name, fallback) =>
+  (name || '').trim().toLowerCase() || `__unnamed__${fallback}`;
+
 function MonthlyReportTab() {
   const today = new Date();
   const [year, setYear] = useState(today.getFullYear());
@@ -43,6 +51,8 @@ function MonthlyReportTab() {
   const [error, setError] = useState('');
   const [savedAt, setSavedAt] = useState(null);
   const [uploading, setUploading] = useState(false);
+  const [uploadTargetKey, setUploadTargetKey] = useState(null);
+  const [collapsed, setCollapsed] = useState({});
   const fileInputRef = useRef(null);
 
   const load = async (y, m) => {
@@ -67,6 +77,9 @@ function MonthlyReportTab() {
           invoiceNumber: e.invoiceNumber || '',
           totalAmount: e.totalAmount || 0,
           status: e.status || 'Unpaid',
+          invoiceDate: e.invoiceDate || null,
+          pdfUrl: e.pdfUrl || '',
+          pdfKey: e.pdfKey || '',
         })),
       });
     } catch (err) {
@@ -94,6 +107,30 @@ function MonthlyReportTab() {
     return { totalIncome, totalExpense, totalDue, totalPaid };
   }, [report]);
 
+  // Group expenses by supplier. We keep the original index on each invoice
+  // so we can update/remove rows in the flat backend array.
+  const supplierGroups = useMemo(() => {
+    const groups = new Map();
+    report.expenses.forEach((e, idx) => {
+      const key = supplierKey(e.companyName, idx);
+      if (!groups.has(key)) {
+        groups.set(key, {
+          key,
+          companyName: e.companyName || '',
+          invoices: [],
+        });
+      }
+      groups.get(key).invoices.push({ ...e, _index: idx });
+    });
+    return Array.from(groups.values()).map((g) => ({
+      ...g,
+      total: g.invoices.reduce((s, inv) => s + num(inv.totalAmount), 0),
+      due: g.invoices
+        .filter((inv) => inv.status !== 'Paid')
+        .reduce((s, inv) => s + num(inv.totalAmount), 0),
+    }));
+  }, [report.expenses]);
+
   const setField = (path, value) => {
     setReport((r) => {
       const next = { ...r };
@@ -106,7 +143,7 @@ function MonthlyReportTab() {
     });
   };
 
-  const addExpense = () => {
+  const addSupplier = () => {
     setReport((r) => ({
       ...r,
       expenses: [
@@ -116,10 +153,39 @@ function MonthlyReportTab() {
     }));
   };
 
+  const addInvoiceToSupplier = (companyName) => {
+    setReport((r) => ({
+      ...r,
+      expenses: [
+        ...r.expenses,
+        {
+          companyName: companyName || '',
+          invoiceNumber: '',
+          totalAmount: 0,
+          status: 'Unpaid',
+        },
+      ],
+    }));
+  };
+
+  const renameSupplier = (groupKey, newName) => {
+    setReport((r) => ({
+      ...r,
+      expenses: r.expenses.map((e, idx) =>
+        supplierKey(e.companyName, idx) === groupKey
+          ? { ...e, companyName: newName }
+          : e
+      ),
+    }));
+  };
+
   const handleUploadInvoice = async (file) => {
     if (!file) return;
     setUploading(true);
     setError('');
+    const targetCompany = uploadTargetKey
+      ? supplierGroups.find((g) => g.key === uploadTargetKey)?.companyName
+      : '';
     try {
       const res = await expenseService.uploadInvoice(file);
       const e = res.data;
@@ -128,7 +194,7 @@ function MonthlyReportTab() {
         expenses: [
           ...r.expenses,
           {
-            companyName: e.companyName || '',
+            companyName: targetCompany || e.companyName || '',
             invoiceNumber: e.invoiceNumber || '',
             totalAmount: num(e.totalAmount),
             status: 'Unpaid',
@@ -142,8 +208,14 @@ function MonthlyReportTab() {
       setError(err.response?.data?.message || err.message || 'Upload failed');
     } finally {
       setUploading(false);
+      setUploadTargetKey(null);
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
+  };
+
+  const triggerUpload = (groupKey = null) => {
+    setUploadTargetKey(groupKey);
+    fileInputRef.current?.click();
   };
 
   const updateExpense = (index, key, value) => {
@@ -161,6 +233,24 @@ function MonthlyReportTab() {
       }
       return { ...r, expenses: r.expenses.filter((_, i) => i !== index) };
     });
+  };
+
+  const removeSupplier = (groupKey) => {
+    setReport((r) => {
+      const survivors = [];
+      r.expenses.forEach((e, idx) => {
+        if (supplierKey(e.companyName, idx) === groupKey) {
+          if (e.pdfKey) expenseService.deleteFile(e.pdfKey).catch(() => {});
+        } else {
+          survivors.push(e);
+        }
+      });
+      return { ...r, expenses: survivors };
+    });
+  };
+
+  const toggleCollapsed = (groupKey) => {
+    setCollapsed((c) => ({ ...c, [groupKey]: !c[groupKey] }));
   };
 
   const handleSave = async () => {
@@ -347,109 +437,60 @@ function MonthlyReportTab() {
               </div>
             </Section>
 
-            {/* Expenses */}
+            {/* Expenses — grouped by supplier on screen, but the print view
+                falls back to the flat invoice table so the PDF/printed report
+                keeps the original structure. */}
             <Section title="Expenses">
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="text-left text-[11px] uppercase tracking-wider text-slate-500 border-b-2 border-slate-200">
-                      <th className="py-2 pr-2 font-bold">Company Name</th>
-                      <th className="py-2 px-2 font-bold">Invoice No.</th>
-                      <th className="py-2 px-2 font-bold text-right">Total (£)</th>
-                      <th className="py-2 px-2 font-bold">Status</th>
-                      <th className="py-2 pl-2 font-bold print:hidden" />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {report.expenses.length === 0 ? (
-                      <tr>
-                        <td colSpan={5} className="py-6 text-center text-slate-400 italic">
-                          No expenses added yet.
-                        </td>
-                      </tr>
-                    ) : (
-                      report.expenses.map((e, i) => (
-                        <tr key={i} className="border-b border-slate-100">
-                          <td className="py-2 pr-2">
-                            <div className="flex items-center gap-1">
-                              <CellInput
-                                value={e.companyName}
-                                onChange={(v) => updateExpense(i, 'companyName', v)}
-                                placeholder="Supplier"
-                              />
-                              {e.pdfUrl && (
-                                <a
-                                  href={e.pdfUrl}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="shrink-0 inline-flex items-center gap-0.5 text-[10px] font-bold text-red-600 hover:text-red-700 px-1.5 py-0.5 rounded bg-red-50 border border-red-100 print:hidden"
-                                  title="Open uploaded invoice"
-                                >
-                                  <FileText className="w-3 h-3" />
-                                  PDF
-                                </a>
-                              )}
-                            </div>
-                          </td>
-                          <td className="py-2 px-2">
-                            <CellInput
-                              value={e.invoiceNumber}
-                              onChange={(v) => updateExpense(i, 'invoiceNumber', v)}
-                              placeholder="INV-…"
-                            />
-                          </td>
-                          <td className="py-2 px-2">
-                            <CellInput
-                              type="number"
-                              value={e.totalAmount}
-                              onChange={(v) => updateExpense(i, 'totalAmount', v)}
-                              align="right"
-                              placeholder="0.00"
-                            />
-                          </td>
-                          <td className="py-2 px-2">
-                            <select
-                              value={e.status}
-                              onChange={(ev) => updateExpense(i, 'status', ev.target.value)}
-                              className={`text-xs font-bold rounded-md px-2 py-1 border-2 print:border-0 print:bg-transparent ${
-                                e.status === 'Paid'
-                                  ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
-                                  : 'bg-red-50 border-red-200 text-red-700'
-                              }`}
-                            >
-                              <option value="Unpaid">Unpaid</option>
-                              <option value="Paid">Paid</option>
-                            </select>
-                          </td>
-                          <td className="py-2 pl-2 print:hidden">
-                            <button
-                              onClick={() => removeExpense(i)}
-                              className="p-1 rounded hover:bg-red-50 text-slate-400 hover:text-red-600"
-                              title="Remove"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
+              {/* On-screen grouped view */}
+              <div className="print:hidden">
+                {supplierGroups.length === 0 ? (
+                  <p className="py-6 text-center text-slate-400 italic text-sm">
+                    No suppliers added yet.
+                  </p>
+                ) : (
+                  <div className="space-y-3">
+                    {supplierGroups.map((group) => (
+                      <SupplierCard
+                        key={group.key}
+                        group={group}
+                        collapsed={!!collapsed[group.key]}
+                        onToggle={() => toggleCollapsed(group.key)}
+                        onRename={(name) => renameSupplier(group.key, name)}
+                        onAddInvoice={() => addInvoiceToSupplier(group.companyName)}
+                        onUploadInvoice={() => triggerUpload(group.key)}
+                        onUpdateExpense={updateExpense}
+                        onRemoveInvoice={removeExpense}
+                        onRemoveSupplier={() => removeSupplier(group.key)}
+                        uploading={uploading && uploadTargetKey === group.key}
+                      />
+                    ))}
+                  </div>
+                )}
 
-              <div className="mt-3 flex items-center gap-3 print:hidden">
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={uploading}
-                  className="inline-flex items-center gap-1.5 text-xs font-bold bg-black text-white hover:bg-slate-800 px-3 py-1.5 rounded-md disabled:opacity-60"
-                >
-                  {uploading ? (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  ) : (
-                    <Upload className="w-3.5 h-3.5" />
-                  )}
-                  {uploading ? 'Reading invoice…' : 'Upload Invoice (PDF / image)'}
-                </button>
+                <div className="mt-4 flex flex-wrap items-center gap-3">
+                  <button
+                    onClick={() => triggerUpload(null)}
+                    disabled={uploading}
+                    className="inline-flex items-center gap-1.5 text-xs font-bold bg-black text-white hover:bg-slate-800 px-3 py-1.5 rounded-md disabled:opacity-60"
+                  >
+                    {uploading && uploadTargetKey === null ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Upload className="w-3.5 h-3.5" />
+                    )}
+                    {uploading && uploadTargetKey === null
+                      ? 'Reading invoice…'
+                      : 'Upload Invoice (new supplier)'}
+                  </button>
+                  <button
+                    onClick={addSupplier}
+                    className="inline-flex items-center gap-1.5 text-xs font-bold text-red-600 hover:text-red-700"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    Add Supplier Manually
+                  </button>
+                </div>
+
                 <input
                   ref={fileInputRef}
                   type="file"
@@ -457,13 +498,48 @@ function MonthlyReportTab() {
                   className="hidden"
                   onChange={(e) => handleUploadInvoice(e.target.files?.[0])}
                 />
-                <button
-                  onClick={addExpense}
-                  className="inline-flex items-center gap-1.5 text-xs font-bold text-red-600 hover:text-red-700"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  Add Manually
-                </button>
+              </div>
+
+              {/* Print-only flat table — preserves the original report layout */}
+              <div className="hidden print:block">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-[11px] uppercase tracking-wider text-slate-500 border-b-2 border-slate-200">
+                      <th className="py-2 pr-2 font-bold">Company Name</th>
+                      <th className="py-2 px-2 font-bold">Invoice No.</th>
+                      <th className="py-2 px-2 font-bold text-right">Total (£)</th>
+                      <th className="py-2 px-2 font-bold">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {report.expenses.length === 0 ? (
+                      <tr>
+                        <td colSpan={4} className="py-6 text-center text-slate-400 italic">
+                          No expenses added yet.
+                        </td>
+                      </tr>
+                    ) : (
+                      report.expenses.map((e, i) => (
+                        <tr key={i} className="border-b border-slate-100">
+                          <td className="py-2 pr-2">{e.companyName}</td>
+                          <td className="py-2 px-2">{e.invoiceNumber || '—'}</td>
+                          <td className="py-2 px-2 text-right font-mono">
+                            £{num(e.totalAmount).toFixed(2)}
+                          </td>
+                          <td
+                            className={`py-2 px-2 font-bold ${
+                              e.status === 'Paid'
+                                ? 'text-emerald-700'
+                                : 'text-red-700'
+                            }`}
+                          >
+                            {e.status || 'Unpaid'}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
               </div>
             </Section>
 
@@ -489,6 +565,166 @@ function MonthlyReportTab() {
           .report-sheet { box-shadow: none !important; }
         }
       `}</style>
+    </div>
+  );
+}
+
+function SupplierCard({
+  group,
+  collapsed,
+  onToggle,
+  onRename,
+  onAddInvoice,
+  onUploadInvoice,
+  onUpdateExpense,
+  onRemoveInvoice,
+  onRemoveSupplier,
+  uploading,
+}) {
+  const count = group.invoices.length;
+  return (
+    <div className="border border-slate-200 rounded-lg overflow-hidden bg-white">
+      <div className="flex items-center gap-2 px-3 py-2.5 bg-slate-50 border-b border-slate-200">
+        <button
+          onClick={onToggle}
+          className="text-slate-400 hover:text-black"
+          title={collapsed ? 'Expand' : 'Collapse'}
+        >
+          {collapsed ? (
+            <ChevronRight className="w-4 h-4" />
+          ) : (
+            <ChevronDown className="w-4 h-4" />
+          )}
+        </button>
+        <Building2 className="w-4 h-4 text-slate-500 shrink-0" />
+        <input
+          value={group.companyName}
+          onChange={(e) => onRename(e.target.value)}
+          placeholder="Supplier name"
+          className="flex-1 min-w-0 bg-transparent text-sm font-extrabold text-black focus:outline-none focus:bg-white focus:px-2 focus:py-0.5 focus:rounded focus:ring-2 focus:ring-red-200"
+        />
+        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+          {count} invoice{count !== 1 ? 's' : ''}
+        </span>
+        <span className="text-xs font-extrabold font-mono text-black ml-2">
+          £{group.total.toFixed(2)}
+        </span>
+        {group.due > 0 && (
+          <span className="text-[10px] font-bold text-red-700 bg-red-50 border border-red-200 rounded px-1.5 py-0.5">
+            £{group.due.toFixed(2)} due
+          </span>
+        )}
+        <button
+          onClick={onRemoveSupplier}
+          className="p-1 rounded hover:bg-red-50 text-slate-400 hover:text-red-600"
+          title="Remove supplier (deletes all its invoices)"
+        >
+          <Trash2 className="w-4 h-4" />
+        </button>
+      </div>
+
+      {!collapsed && (
+        <div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-[10px] uppercase tracking-wider text-slate-500 border-b border-slate-100">
+                  <th className="py-2 px-3 font-bold">Invoice No.</th>
+                  <th className="py-2 px-3 font-bold text-right">Total (£)</th>
+                  <th className="py-2 px-3 font-bold">Status</th>
+                  <th className="py-2 px-3 font-bold">PDF</th>
+                  <th className="py-2 px-3 font-bold w-8" />
+                </tr>
+              </thead>
+              <tbody>
+                {group.invoices.map((inv) => (
+                  <tr key={inv._index} className="border-b border-slate-100 last:border-0">
+                    <td className="py-2 px-3">
+                      <CellInput
+                        value={inv.invoiceNumber}
+                        onChange={(v) => onUpdateExpense(inv._index, 'invoiceNumber', v)}
+                        placeholder="INV-…"
+                      />
+                    </td>
+                    <td className="py-2 px-3">
+                      <CellInput
+                        type="number"
+                        value={inv.totalAmount}
+                        onChange={(v) => onUpdateExpense(inv._index, 'totalAmount', v)}
+                        align="right"
+                        placeholder="0.00"
+                      />
+                    </td>
+                    <td className="py-2 px-3">
+                      <select
+                        value={inv.status}
+                        onChange={(ev) =>
+                          onUpdateExpense(inv._index, 'status', ev.target.value)
+                        }
+                        className={`text-xs font-bold rounded-md px-2 py-1 border-2 ${
+                          inv.status === 'Paid'
+                            ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                            : 'bg-red-50 border-red-200 text-red-700'
+                        }`}
+                      >
+                        <option value="Unpaid">Unpaid</option>
+                        <option value="Paid">Paid</option>
+                      </select>
+                    </td>
+                    <td className="py-2 px-3">
+                      {inv.pdfUrl ? (
+                        <a
+                          href={inv.pdfUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-0.5 text-[10px] font-bold text-red-600 hover:text-red-700 px-1.5 py-0.5 rounded bg-red-50 border border-red-100"
+                        >
+                          <FileText className="w-3 h-3" />
+                          View
+                        </a>
+                      ) : (
+                        <span className="text-[11px] text-slate-300">—</span>
+                      )}
+                    </td>
+                    <td className="py-2 px-3">
+                      <button
+                        onClick={() => onRemoveInvoice(inv._index)}
+                        className="p-1 rounded hover:bg-red-50 text-slate-400 hover:text-red-600"
+                        title="Remove invoice"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="flex items-center gap-3 px-3 py-2 bg-slate-50/50 border-t border-slate-100">
+            <button
+              onClick={onUploadInvoice}
+              disabled={uploading}
+              className="inline-flex items-center gap-1.5 text-[11px] font-bold text-black hover:text-red-600 disabled:opacity-60"
+            >
+              {uploading ? (
+                <Loader2 className="w-3 h-3 animate-spin" />
+              ) : (
+                <Upload className="w-3 h-3" />
+              )}
+              {uploading ? 'Reading…' : 'Upload Another Invoice'}
+            </button>
+            <span className="text-slate-300">·</span>
+            <button
+              onClick={onAddInvoice}
+              className="inline-flex items-center gap-1.5 text-[11px] font-bold text-red-600 hover:text-red-700"
+            >
+              <Plus className="w-3 h-3" />
+              Add Invoice Manually
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

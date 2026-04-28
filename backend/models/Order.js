@@ -7,8 +7,8 @@ const orderSchema = new mongoose.Schema(
     invoiceNumber: { type: String, unique: true, sparse: true, index: true },
     customer: { type: mongoose.Schema.Types.ObjectId, ref: 'Customer', index: true },
     customerName: { type: String, required: [true, 'Customer name is required'], trim: true },
-    customerPhone: { type: String, required: [true, 'Customer phone is required'], trim: true },
-    customerEmail: { type: String, required: [true, 'Customer email is required'], trim: true, lowercase: true },
+    customerPhone: { type: String, default: '', trim: true },
+    customerEmail: { type: String, default: '', trim: true, lowercase: true },
     title: { type: String, required: [true, 'Title is required'], trim: true },
     description: { type: String, default: '', trim: true },
     price: { type: Number, required: [true, 'Price is required'], min: [0, 'Price cannot be negative'] },
@@ -23,5 +23,12 @@ const orderSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+orderSchema.pre('validate', function (next) {
+  if (!this.customerPhone?.trim() && !this.customerEmail?.trim()) {
+    this.invalidate('customerPhone', 'Either phone or email is required');
+  }
+  next();
+});
 
 module.exports = mongoose.model('Order', orderSchema);

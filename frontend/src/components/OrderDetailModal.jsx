@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Printer, MessageSquare } from 'lucide-react';
+import { Printer, MessageSquare, User, Phone, Mail } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -76,6 +76,39 @@ function OrderDetailModal({ order, open, onClose }) {
         </div>
 
         <div className="px-6 py-5">
+          {/* Customer info */}
+          <div className="bg-red-50/60 border border-red-100 rounded-lg p-3 mb-3">
+            <p className="text-[10px] font-bold text-red-600 uppercase tracking-wider mb-1.5">
+              Customer
+            </p>
+            <p className="flex items-center gap-1.5 text-sm font-extrabold text-black">
+              <User className="w-3.5 h-3.5 text-slate-500" />
+              {order.customerName || '—'}
+            </p>
+            {order.customerPhone && (
+              <p className="flex items-center gap-1.5 text-xs text-slate-700 mt-1">
+                <Phone className="w-3 h-3 text-slate-400" />
+                <a
+                  href={`tel:${order.customerPhone}`}
+                  className="hover:text-red-600"
+                >
+                  {order.customerPhone}
+                </a>
+              </p>
+            )}
+            {order.customerEmail && (
+              <p className="flex items-center gap-1.5 text-xs text-slate-700 mt-0.5 break-all">
+                <Mail className="w-3 h-3 text-slate-400" />
+                <a
+                  href={`mailto:${order.customerEmail}`}
+                  className="hover:text-red-600"
+                >
+                  {order.customerEmail}
+                </a>
+              </p>
+            )}
+          </div>
+
           {(() => {
             const total = Number(order.price) || 0;
             const advance =

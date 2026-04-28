@@ -178,8 +178,12 @@ function InvoicePage() {
                 Bill To
               </p>
               <p className="text-sm font-extrabold text-black">{order.customerName}</p>
-              <p className="text-xs text-slate-700 mt-0.5">{order.customerPhone}</p>
-              <p className="text-xs text-slate-700">{order.customerEmail}</p>
+              {order.customerPhone && (
+                <p className="text-xs text-slate-700 mt-0.5">{order.customerPhone}</p>
+              )}
+              {order.customerEmail && (
+                <p className="text-xs text-slate-700">{order.customerEmail}</p>
+              )}
             </div>
 
             <div className="sm:text-right">
