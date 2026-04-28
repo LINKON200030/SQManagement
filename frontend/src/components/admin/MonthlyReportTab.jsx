@@ -9,7 +9,6 @@ import {
   FileText,
   Loader2,
   FileDown,
-  X,
 } from 'lucide-react';
 import { monthlyReportService, expenseService, bundlePdfUrl } from '../../services/api';
 
@@ -34,18 +33,17 @@ const num = (v) => {
   return Number.isFinite(n) ? n : 0;
 };
 
-// Old reports stored a single pdfUrl/pdfKey directly on the expense. Treat that
-// as a one-element attachments array so the rest of the UI only sees the new shape.
+// Old reports stored a single pdfUrl/pdfKey directly on the expense. Treat
+// that as a one-element attachments array so the rest of the UI sees one shape.
 const normaliseAttachments = (e) => {
   if (Array.isArray(e.attachments) && e.attachments.length > 0) {
     return e.attachments.map((a) => ({
       pdfUrl: a.pdfUrl || '',
       pdfKey: a.pdfKey || '',
-      originalName: a.originalName || '',
     }));
   }
   if (e.pdfKey || e.pdfUrl) {
-    return [{ pdfUrl: e.pdfUrl || '', pdfKey: e.pdfKey || '', originalName: '' }];
+    return [{ pdfUrl: e.pdfUrl || '', pdfKey: e.pdfKey || '' }];
   }
   return [];
 };
@@ -59,11 +57,9 @@ function MonthlyReportTab() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [savedAt, setSavedAt] = useState(null);
+  const [dirty, setDirty] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [rowUploadingIndex, setRowUploadingIndex] = useState(null);
-  const newRowFileInputRef = useRef(null);
-  const rowFileInputRef = useRef(null);
-  const targetRowRef = useRef(null);
+  const fileInputRef = useRef(null);
 
   const load = async (y, m) => {
     setLoading(true);
@@ -91,6 +87,7 @@ function MonthlyReportTab() {
           attachments: normaliseAttachments(e),
         })),
       });
+      setDirty(false);
     } catch (err) {
       setError(err.response?.data?.message || err.message);
     } finally {
@@ -116,8 +113,14 @@ function MonthlyReportTab() {
     return { totalIncome, totalExpense, totalDue, totalPaid };
   }, [report]);
 
+  // Mutate report state and mark dirty in one shot.
+  const mutate = (fn) => {
+    setReport((r) => fn(r));
+    setDirty(true);
+  };
+
   const setField = (path, value) => {
-    setReport((r) => {
+    mutate((r) => {
       const next = { ...r };
       if (path[0] === 'categoryIncome') {
         next.categoryIncome = { ...r.categoryIncome, [path[1]]: value };
@@ -129,7 +132,7 @@ function MonthlyReportTab() {
   };
 
   const addExpense = () => {
-    setReport((r) => ({
+    mutate((r) => ({
       ...r,
       expenses: [
         ...r.expenses,
@@ -144,125 +147,58 @@ function MonthlyReportTab() {
     }));
   };
 
-  // Upload one or many PDFs/images. OCR runs per file; the first parsed result
-  // seeds companyName/invoiceDate, the totalAmount is summed across files.
-  const uploadFiles = async (fileList) => {
+  const handleUploadInvoices = async (fileList) => {
     const files = Array.from(fileList || []).filter(Boolean);
-    if (files.length === 0) return null;
-    const results = await Promise.all(
-      files.map((f) => expenseService.uploadInvoice(f).then((r) => r.data))
-    );
-    const first = results[0] || {};
-    const totalAmount = results.reduce((s, r) => s + num(r.totalAmount), 0);
-    return {
-      companyName: first.companyName || '',
-      invoiceDate: first.invoiceDate || null,
-      totalAmount,
-      attachments: results.map((r) => ({
-        pdfUrl: r.pdfUrl || '',
-        pdfKey: r.pdfKey || '',
-        originalName: '',
-      })),
-    };
-  };
-
-  const handleNewRowUpload = async (fileList) => {
-    if (!fileList || fileList.length === 0) return;
+    if (files.length === 0) return;
     setUploading(true);
     setError('');
     try {
-      const result = await uploadFiles(fileList);
-      if (result) {
-        setReport((r) => ({
-          ...r,
-          expenses: [
-            ...r.expenses,
-            {
-              companyName: result.companyName,
-              invoiceNumber: '',
-              totalAmount: result.totalAmount,
-              status: 'Unpaid',
-              invoiceDate: result.invoiceDate,
-              attachments: result.attachments,
-            },
-          ],
-        }));
-      }
+      const results = await Promise.all(
+        files.map((f) => expenseService.uploadInvoice(f).then((r) => r.data))
+      );
+      const first = results[0] || {};
+      const totalAmount = results.reduce((s, r) => s + num(r.totalAmount), 0);
+      const attachments = results.map((r) => ({
+        pdfUrl: r.pdfUrl || '',
+        pdfKey: r.pdfKey || '',
+      }));
+      mutate((r) => ({
+        ...r,
+        expenses: [
+          ...r.expenses,
+          {
+            companyName: first.companyName || '',
+            invoiceNumber: '',
+            totalAmount,
+            status: 'Unpaid',
+            invoiceDate: first.invoiceDate || null,
+            attachments,
+          },
+        ],
+      }));
     } catch (err) {
       setError(err.response?.data?.message || err.message || 'Upload failed');
     } finally {
       setUploading(false);
-      if (newRowFileInputRef.current) newRowFileInputRef.current.value = '';
+      if (fileInputRef.current) fileInputRef.current.value = '';
     }
-  };
-
-  const handleRowUpload = async (fileList) => {
-    const index = targetRowRef.current;
-    if (index == null || !fileList || fileList.length === 0) return;
-    setRowUploadingIndex(index);
-    setError('');
-    try {
-      const result = await uploadFiles(fileList);
-      if (result) {
-        setReport((r) => ({
-          ...r,
-          expenses: r.expenses.map((e, i) =>
-            i === index
-              ? {
-                  ...e,
-                  // Only adopt OCR companyName if the row is still blank
-                  companyName: e.companyName || result.companyName,
-                  totalAmount: num(e.totalAmount) + result.totalAmount,
-                  attachments: [...e.attachments, ...result.attachments],
-                }
-              : e
-          ),
-        }));
-      }
-    } catch (err) {
-      setError(err.response?.data?.message || err.message || 'Upload failed');
-    } finally {
-      setRowUploadingIndex(null);
-      targetRowRef.current = null;
-      if (rowFileInputRef.current) rowFileInputRef.current.value = '';
-    }
-  };
-
-  const triggerRowUpload = (index) => {
-    targetRowRef.current = index;
-    rowFileInputRef.current?.click();
   };
 
   const updateExpense = (index, key, value) => {
-    setReport((r) => ({
+    mutate((r) => ({
       ...r,
       expenses: r.expenses.map((e, i) => (i === index ? { ...e, [key]: value } : e)),
     }));
   };
 
   const removeExpense = (index) => {
-    setReport((r) => {
+    mutate((r) => {
       const target = r.expenses[index];
       target?.attachments?.forEach((a) => {
         if (a.pdfKey) expenseService.deleteFile(a.pdfKey).catch(() => {});
       });
       return { ...r, expenses: r.expenses.filter((_, i) => i !== index) };
     });
-  };
-
-  const removeAttachment = (rowIndex, attIndex) => {
-    setReport((r) => ({
-      ...r,
-      expenses: r.expenses.map((e, i) => {
-        if (i !== rowIndex) return e;
-        const target = e.attachments[attIndex];
-        if (target?.pdfKey) expenseService.deleteFile(target.pdfKey).catch(() => {});
-        return {
-          ...e,
-          attachments: e.attachments.filter((_, j) => j !== attIndex),
-        };
-      }),
-    }));
   };
 
   const handleSave = async () => {
@@ -285,17 +221,31 @@ function MonthlyReportTab() {
           status: e.status,
           invoiceDate: e.invoiceDate || undefined,
           attachments: e.attachments,
-          // Keep the legacy single-PDF columns in sync for any reader that
-          // still expects them.
+          // Mirror the first attachment onto the legacy fields so any older
+          // reader keeps working.
           pdfUrl: e.attachments[0]?.pdfUrl || '',
           pdfKey: e.attachments[0]?.pdfKey || '',
         })),
       });
       setSavedAt(new Date());
+      setDirty(false);
     } catch (err) {
       setError(err.response?.data?.message || err.message);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handlePrintWithInvoices = async (e) => {
+    if (dirty) {
+      e.preventDefault();
+      const ok = window.confirm(
+        'You have unsaved changes. Save now so the bundled PDF includes them?'
+      );
+      if (ok) {
+        await handleSave();
+      }
+      window.open(bundlePdfUrl(year, month), '_blank');
     }
   };
 
@@ -344,7 +294,12 @@ function MonthlyReportTab() {
         </div>
 
         <div className="flex gap-2 items-center">
-          {savedAt && (
+          {dirty && (
+            <span className="text-xs font-bold text-red-600 mr-1">
+              Unsaved changes
+            </span>
+          )}
+          {!dirty && savedAt && (
             <span className="text-xs text-slate-400 mr-1">
               Saved {savedAt.toLocaleTimeString()}
             </span>
@@ -361,6 +316,7 @@ function MonthlyReportTab() {
             href={bundlePdfUrl(year, month)}
             target="_blank"
             rel="noreferrer"
+            onClick={handlePrintWithInvoices}
             className="inline-flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white text-sm font-bold px-4 py-2.5 rounded-lg shadow-md shadow-red-900/20"
             title="Opens a single PDF with the report and every uploaded invoice"
           >
@@ -475,78 +431,37 @@ function MonthlyReportTab() {
                     ) : (
                       report.expenses.map((e, i) => {
                         const attCount = e.attachments?.length || 0;
-                        const showCount = attCount > 0;
                         return (
-                          <tr key={i} className="border-b border-slate-100 align-top">
+                          <tr key={i} className="border-b border-slate-100">
                             <td className="py-2 pr-2">
-                              <div className="space-y-1">
+                              <div className="flex items-center gap-1">
                                 <CellInput
                                   value={e.companyName}
                                   onChange={(v) => updateExpense(i, 'companyName', v)}
                                   placeholder="Supplier"
                                 />
-                                {attCount > 0 && (
-                                  <div className="flex flex-wrap gap-1 print:hidden">
-                                    {e.attachments.map((a, j) => (
-                                      <span
-                                        key={j}
-                                        className="inline-flex items-center gap-1 text-[10px] font-bold text-red-600 bg-red-50 border border-red-100 rounded px-1.5 py-0.5"
-                                      >
-                                        <a
-                                          href={a.pdfUrl}
-                                          target="_blank"
-                                          rel="noreferrer"
-                                          className="inline-flex items-center gap-0.5 hover:text-red-700"
-                                          title="Open invoice"
-                                        >
-                                          <FileText className="w-3 h-3" />
-                                          PDF {j + 1}
-                                        </a>
-                                        <button
-                                          onClick={() => removeAttachment(i, j)}
-                                          className="text-red-400 hover:text-red-700"
-                                          title="Remove this PDF"
-                                        >
-                                          <X className="w-3 h-3" />
-                                        </button>
-                                      </span>
-                                    ))}
-                                    <button
-                                      onClick={() => triggerRowUpload(i)}
-                                      disabled={rowUploadingIndex === i}
-                                      className="inline-flex items-center gap-0.5 text-[10px] font-bold text-slate-600 hover:text-red-600 px-1.5 py-0.5 rounded border border-slate-200 hover:border-red-300 disabled:opacity-60"
-                                      title="Add more PDFs to this row"
-                                    >
-                                      {rowUploadingIndex === i ? (
-                                        <Loader2 className="w-3 h-3 animate-spin" />
-                                      ) : (
-                                        <Plus className="w-3 h-3" />
-                                      )}
-                                      PDF
-                                    </button>
-                                  </div>
-                                )}
-                                {attCount === 0 && (
-                                  <button
-                                    onClick={() => triggerRowUpload(i)}
-                                    disabled={rowUploadingIndex === i}
-                                    className="inline-flex items-center gap-0.5 text-[10px] font-bold text-slate-500 hover:text-red-600 print:hidden disabled:opacity-60"
-                                    title="Upload one or more PDFs for this row"
+                                {e.attachments?.[0]?.pdfUrl && (
+                                  <a
+                                    href={e.attachments[0].pdfUrl}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="shrink-0 inline-flex items-center gap-0.5 text-[10px] font-bold text-red-600 hover:text-red-700 px-1.5 py-0.5 rounded bg-red-50 border border-red-100 print:hidden"
+                                    title={
+                                      attCount > 1
+                                        ? `${attCount} PDFs attached — opens the first`
+                                        : 'Open uploaded invoice'
+                                    }
                                   >
-                                    {rowUploadingIndex === i ? (
-                                      <Loader2 className="w-3 h-3 animate-spin" />
-                                    ) : (
-                                      <Upload className="w-3 h-3" />
-                                    )}
-                                    Upload PDF(s)
-                                  </button>
+                                    <FileText className="w-3 h-3" />
+                                    PDF{attCount > 1 ? `×${attCount}` : ''}
+                                  </a>
                                 )}
                               </div>
                             </td>
                             <td className="py-2 px-2">
-                              {showCount ? (
+                              {attCount > 0 ? (
                                 <span
-                                  className="inline-flex items-center justify-center min-w-[2rem] h-6 px-2 rounded-full bg-black text-white text-xs font-extrabold"
+                                  className="inline-flex items-center justify-center min-w-[1.75rem] h-6 px-2 rounded-full bg-black text-white text-xs font-extrabold"
                                   title={`${attCount} invoice${attCount > 1 ? 's' : ''} attached`}
                                 >
                                   {attCount}
@@ -601,7 +516,7 @@ function MonthlyReportTab() {
 
               <div className="mt-3 flex items-center gap-3 print:hidden">
                 <button
-                  onClick={() => newRowFileInputRef.current?.click()}
+                  onClick={() => fileInputRef.current?.click()}
                   disabled={uploading}
                   className="inline-flex items-center gap-1.5 text-xs font-bold bg-black text-white hover:bg-slate-800 px-3 py-1.5 rounded-md disabled:opacity-60"
                 >
@@ -610,23 +525,15 @@ function MonthlyReportTab() {
                   ) : (
                     <Upload className="w-3.5 h-3.5" />
                   )}
-                  {uploading ? 'Reading invoices…' : 'Upload Invoice(s) (PDF / image)'}
+                  {uploading ? 'Reading invoices…' : 'Upload Invoice (PDF / image)'}
                 </button>
                 <input
-                  ref={newRowFileInputRef}
+                  ref={fileInputRef}
                   type="file"
                   accept="application/pdf,image/*"
                   multiple
                   className="hidden"
-                  onChange={(e) => handleNewRowUpload(e.target.files)}
-                />
-                <input
-                  ref={rowFileInputRef}
-                  type="file"
-                  accept="application/pdf,image/*"
-                  multiple
-                  className="hidden"
-                  onChange={(e) => handleRowUpload(e.target.files)}
+                  onChange={(e) => handleUploadInvoices(e.target.files)}
                 />
                 <button
                   onClick={addExpense}
@@ -635,6 +542,9 @@ function MonthlyReportTab() {
                   <Plus className="w-3.5 h-3.5" />
                   Add Manually
                 </button>
+                <span className="text-[11px] text-slate-400">
+                  Tip: select multiple files at once for the same supplier.
+                </span>
               </div>
             </Section>
 
