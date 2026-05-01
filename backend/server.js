@@ -9,6 +9,7 @@ const monthlyReportRoutes = require('./routes/monthlyReportRoutes');
 const knowledgeRoutes = require('./routes/knowledgeRoutes');
 const announcementRoutes = require('./routes/announcementRoutes');
 const expenseRoutes = require('./routes/expenseRoutes');
+const stripeWebhookRoutes = require('./routes/stripeWebhookRoutes');
 
 dotenv.config();
 
@@ -17,6 +18,11 @@ const app = express();
 connectDB();
 
 app.use(cors());
+
+// Stripe webhook MUST be mounted before express.json() — it needs the raw body
+// for signature verification. The route applies its own express.raw() parser.
+app.use('/api/webhooks/stripe', stripeWebhookRoutes);
+
 app.use(express.json());
 
 app.get('/', (req, res) => {
