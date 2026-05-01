@@ -10,6 +10,7 @@ const knowledgeRoutes = require('./routes/knowledgeRoutes');
 const announcementRoutes = require('./routes/announcementRoutes');
 const expenseRoutes = require('./routes/expenseRoutes');
 const stripeWebhookRoutes = require('./routes/stripeWebhookRoutes');
+const websiteBookingRoutes = require('./routes/websiteBookingRoutes');
 
 dotenv.config();
 
@@ -36,6 +37,7 @@ app.use('/api/monthly-reports', monthlyReportRoutes);
 app.use('/api/knowledge', knowledgeRoutes);
 app.use('/api/announcements', announcementRoutes);
 app.use('/api/expenses', expenseRoutes);
+app.use('/api/bookings/website', websiteBookingRoutes);
 
 app.use((err, req, res, next) => {
   console.error(err.stack);
