@@ -34,18 +34,37 @@ const createOrder = async (req, res) => {
     }
 
     const year = new Date().getFullYear();
-    const yearStart = new Date(year, 0, 1);
-    const yearCount = await Order.countDocuments({ createdAt: { $gte: yearStart } });
-    const invoiceNumber = `INV-${year}-${String(yearCount + 1).padStart(4, '0')}`;
 
-    const order = await Order.create({
-      ...req.body,
-      invoiceNumber,
-      customer: customer._id,
-      customerName: customer.name,
-      customerPhone: customer.phone,
-      customerEmail: customer.email,
-    });
+    const nextInvoiceNumber = async () => {
+      const last = await Order.findOne({ invoiceNumber: new RegExp(`^INV-${year}-`) })
+        .sort({ invoiceNumber: -1 })
+        .select('invoiceNumber')
+        .lean();
+      let seq = 1;
+      if (last?.invoiceNumber) {
+        const parsed = parseInt(last.invoiceNumber.split('-')[2], 10);
+        if (Number.isFinite(parsed)) seq = parsed + 1;
+      }
+      return `INV-${year}-${String(seq).padStart(4, '0')}`;
+    };
+
+    let order;
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      try {
+        order = await Order.create({
+          ...req.body,
+          invoiceNumber: await nextInvoiceNumber(),
+          customer: customer._id,
+          customerName: customer.name,
+          customerPhone: customer.phone,
+          customerEmail: customer.email,
+        });
+        break;
+      } catch (err) {
+        if (err?.code === 11000 && err?.keyPattern?.invoiceNumber && attempt < 4) continue;
+        throw err;
+      }
+    }
 
     res.status(201).json(order);
   } catch (error) {
