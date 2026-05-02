@@ -18,6 +18,7 @@ const INITIAL_FORM = {
   assignedTo: '',
   tag: 'Flexible',
   dueDate: '',
+  chargeMode: 'remaining',
 };
 
 function CreateOrderPage() {
@@ -77,6 +78,7 @@ function CreateOrderPage() {
       ...form,
       price: Number(form.price),
       advancePaid: form.advancePaid === '' ? 0 : Number(form.advancePaid),
+      chargeMode: form.chargeMode || 'remaining',
     });
     if (result.success) {
       setSuccess(true);
@@ -296,6 +298,26 @@ function CreateOrderPage() {
                 </Field>
               </div>
 
+              <Field
+                label="Stripe Payment Link"
+                hint="Charges the customer when they click the link"
+              >
+                <div className="grid grid-cols-2 gap-2">
+                  <ChargeModeOption
+                    active={form.chargeMode === 'remaining'}
+                    onClick={() => setForm((f) => ({ ...f, chargeMode: 'remaining' }))}
+                    title="Remaining Balance"
+                    subtitle="Charges price − advance"
+                  />
+                  <ChargeModeOption
+                    active={form.chargeMode === 'full'}
+                    onClick={() => setForm((f) => ({ ...f, chargeMode: 'full' }))}
+                    title="Full Price"
+                    subtitle="Charges the entire price"
+                  />
+                </div>
+              </Field>
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <Field label="Order By" required error={errors.orderBy}>
                   <select
@@ -388,6 +410,25 @@ function Section({ title, children }) {
       </div>
       {children}
     </div>
+  );
+}
+
+function ChargeModeOption({ active, onClick, title, subtitle }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`text-left rounded-lg border-2 px-3 py-2.5 transition-all ${
+        active
+          ? 'border-red-500 bg-red-50/60'
+          : 'border-slate-200 hover:border-slate-300 bg-white'
+      }`}
+    >
+      <p className={`text-xs font-extrabold ${active ? 'text-red-700' : 'text-black'}`}>
+        {title}
+      </p>
+      <p className="text-[11px] text-slate-500 mt-0.5">{subtitle}</p>
+    </button>
   );
 }
 

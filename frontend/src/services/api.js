@@ -14,6 +14,7 @@ export const orderService = {
   getOrderById: (id) => api.get(`/orders/${id}`),
   updateOrder: (id, data) => api.patch(`/orders/${id}`, data),
   deleteOrder: (id) => api.delete(`/orders/${id}`),
+  regeneratePaymentLink: (id) => api.post(`/orders/${id}/payment-link`),
 };
 
 export const customerService = {

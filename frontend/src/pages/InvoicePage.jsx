@@ -291,6 +291,24 @@ function InvoicePage() {
                 <Detail label="Account Number" value={BANK.accountNumber} mono />
                 <Detail label="Sort Code" value={BANK.sortCode} mono />
               </div>
+              {order.paymentLinkUrl && balance > 0 && !isPaid && (
+                <div className="mt-2.5">
+                  <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-slate-400 mb-1.5">
+                    Pay Online
+                  </p>
+                  <a
+                    href={order.paymentLinkUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-block px-3 py-1.5 bg-red-600 text-white text-xs font-bold rounded-md no-underline print:bg-white print:text-red-700 print:border print:border-red-600"
+                  >
+                    Pay {fmt(order.chargeMode === 'full' ? gross : balance)} via Stripe →
+                  </a>
+                  <p className="text-[10px] text-slate-500 mt-1 break-all print:text-slate-700">
+                    {order.paymentLinkUrl}
+                  </p>
+                </div>
+              )}
             </div>
 
             <div>
