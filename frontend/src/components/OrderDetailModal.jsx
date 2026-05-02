@@ -1,17 +1,5 @@
 import { useState, useEffect } from 'react';
-import {
-  Printer,
-  MessageSquare,
-  User,
-  Phone,
-  Mail,
-  Copy,
-  ExternalLink,
-  CreditCard,
-  RefreshCw,
-  Check,
-} from 'lucide-react';
-import { orderService } from '../services/api';
+import { Printer, MessageSquare, User, Phone, Mail } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -32,45 +20,14 @@ function OrderDetailModal({ order, open, onClose }) {
   const [commentEditing, setCommentEditing] = useState(false);
   const [commentText, setCommentText] = useState('');
   const [savingComment, setSavingComment] = useState(false);
-  const [paymentLink, setPaymentLink] = useState('');
-  const [copied, setCopied] = useState(false);
-  const [regenerating, setRegenerating] = useState(false);
-  const [linkError, setLinkError] = useState('');
 
   useEffect(() => {
     if (open) {
       setCommentText(order?.comment || '');
       setCommentEditing(false);
       setConfirmDelete(false);
-      setPaymentLink(order?.paymentLinkUrl || '');
-      setCopied(false);
-      setLinkError('');
     }
-  }, [open, order?._id, order?.comment, order?.paymentLinkUrl]);
-
-  const handleCopy = async () => {
-    if (!paymentLink) return;
-    try {
-      await navigator.clipboard.writeText(paymentLink);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1800);
-    } catch {
-      setLinkError('Could not copy. Long-press the link to copy manually.');
-    }
-  };
-
-  const handleRegenerate = async () => {
-    setRegenerating(true);
-    setLinkError('');
-    try {
-      const res = await orderService.regeneratePaymentLink(order._id);
-      setPaymentLink(res.data.paymentLinkUrl || '');
-    } catch (err) {
-      setLinkError(err.response?.data?.message || 'Failed to generate link.');
-    } finally {
-      setRegenerating(false);
-    }
-  };
+  }, [open, order?._id, order?.comment]);
 
   if (!order) return null;
 
@@ -247,87 +204,11 @@ function OrderDetailModal({ order, open, onClose }) {
             )}
           </div>
 
-          {/* Stripe payment link */}
-          <div className="mt-4 bg-slate-50 border border-slate-200 rounded-lg p-3">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                <CreditCard className="w-3 h-3" />
-                Stripe Payment Link
-              </p>
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                {order.chargeMode === 'full' ? 'Full Price' : 'Remaining Balance'}
-              </span>
-            </div>
-            {paymentLink ? (
-              <>
-                <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-md px-2.5 py-1.5">
-                  <p className="flex-1 text-[11px] font-mono text-slate-700 truncate">
-                    {paymentLink}
-                  </p>
-                </div>
-                <div className="grid grid-cols-3 gap-2 mt-2">
-                  <button
-                    onClick={handleCopy}
-                    className={`inline-flex items-center justify-center gap-1.5 text-xs font-bold py-2 rounded-md transition-colors ${
-                      copied
-                        ? 'bg-emerald-600 text-white'
-                        : 'bg-black text-white hover:bg-slate-800'
-                    }`}
-                  >
-                    {copied ? (
-                      <>
-                        <Check className="w-3.5 h-3.5" />
-                        Copied
-                      </>
-                    ) : (
-                      <>
-                        <Copy className="w-3.5 h-3.5" />
-                        Copy
-                      </>
-                    )}
-                  </button>
-                  <a
-                    href={paymentLink}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center justify-center gap-1.5 text-xs font-bold py-2 rounded-md border-2 border-slate-200 text-black hover:border-black"
-                  >
-                    <ExternalLink className="w-3.5 h-3.5" />
-                    Open
-                  </a>
-                  <button
-                    onClick={handleRegenerate}
-                    disabled={regenerating}
-                    className="inline-flex items-center justify-center gap-1.5 text-xs font-bold py-2 rounded-md border-2 border-slate-200 text-slate-700 hover:border-red-400 hover:text-red-600 disabled:opacity-50"
-                  >
-                    <RefreshCw className={`w-3.5 h-3.5 ${regenerating ? 'animate-spin' : ''}`} />
-                    {regenerating ? '…' : 'Renew'}
-                  </button>
-                </div>
-              </>
-            ) : (
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-xs text-slate-500 italic">No payment link yet.</p>
-                <button
-                  onClick={handleRegenerate}
-                  disabled={regenerating}
-                  className="inline-flex items-center gap-1.5 text-xs font-bold py-1.5 px-3 rounded-md bg-black text-white hover:bg-slate-800 disabled:opacity-50"
-                >
-                  <RefreshCw className={`w-3.5 h-3.5 ${regenerating ? 'animate-spin' : ''}`} />
-                  {regenerating ? 'Generating…' : 'Generate'}
-                </button>
-              </div>
-            )}
-            {linkError && (
-              <p className="text-[11px] text-red-600 font-semibold mt-1.5">{linkError}</p>
-            )}
-          </div>
-
           <a
             href={`/invoice/${order._id}`}
             target="_blank"
             rel="noreferrer"
-            className="mt-3 inline-flex items-center justify-center gap-2 w-full bg-red-600 hover:bg-red-700 text-white py-2.5 rounded-lg text-sm font-bold shadow-md shadow-red-900/20 transition-all"
+            className="mt-4 inline-flex items-center justify-center gap-2 w-full bg-red-600 hover:bg-red-700 text-white py-2.5 rounded-lg text-sm font-bold shadow-md shadow-red-900/20 transition-all"
           >
             <Printer className="w-4 h-4" />
             Print VAT Invoice

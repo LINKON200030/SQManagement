@@ -8,7 +8,6 @@ const {
   getOrderById,
   updateOrder,
   deleteOrder,
-  regeneratePaymentLink,
 } = require('../controllers/orderController');
 
 router.post('/', createOrder);
@@ -18,6 +17,5 @@ router.get('/upcoming', getUpcomingOrders);
 router.get('/:id', getOrderById);
 router.patch('/:id', updateOrder);
 router.delete('/:id', deleteOrder);
-router.post('/:id/payment-link', regeneratePaymentLink);
 
 module.exports = router;
