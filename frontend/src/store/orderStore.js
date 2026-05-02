@@ -47,6 +47,22 @@ const useOrderStore = create((set) => ({
     }
   },
 
+  addNote: async (id, text, author) => {
+    try {
+      const response = await orderService.addNote(id, { text, author });
+      const updated = response.data;
+      const patch = (arr) => arr.map((o) => (o._id === id ? updated : o));
+      set((state) => ({
+        orders: patch(state.orders),
+        todayOrders: patch(state.todayOrders),
+        upcomingOrders: patch(state.upcomingOrders),
+      }));
+      return { success: true, data: updated };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  },
+
   updateOrderStatus: async (id, updates) => {
     try {
       const response = await orderService.updateOrder(id, updates);

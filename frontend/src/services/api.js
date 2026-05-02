@@ -13,6 +13,7 @@ export const orderService = {
   getUpcomingOrders: () => api.get('/orders/upcoming'),
   getOrderById: (id) => api.get(`/orders/${id}`),
   updateOrder: (id, data) => api.patch(`/orders/${id}`, data),
+  addNote: (id, data) => api.post(`/orders/${id}/notes`, data),
   deleteOrder: (id) => api.delete(`/orders/${id}`),
 };
 

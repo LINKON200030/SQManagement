@@ -133,6 +133,24 @@ const updateOrder = async (req, res) => {
   }
 };
 
+const addNote = async (req, res) => {
+  try {
+    const { text, author } = req.body;
+    if (!text?.trim() || !author?.trim()) {
+      return res.status(400).json({ message: 'text and author are required' });
+    }
+    const order = await Order.findByIdAndUpdate(
+      req.params.id,
+      { $push: { notes: { text: text.trim(), author: author.trim(), createdAt: new Date() } } },
+      { new: true }
+    );
+    if (!order) return res.status(404).json({ message: 'Order not found' });
+    res.json(order);
+  } catch (error) {
+    res.status(400).json({ message: error.message });
+  }
+};
+
 const deleteOrder = async (req, res) => {
   try {
     const order = await Order.findByIdAndDelete(req.params.id);
@@ -150,5 +168,6 @@ module.exports = {
   getUpcomingOrders,
   getOrderById,
   updateOrder,
+  addNote,
   deleteOrder,
 };

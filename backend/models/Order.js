@@ -20,6 +20,13 @@ const orderSchema = new mongoose.Schema(
     dueDate: { type: Date, required: [true, 'Due date is required'] },
     status: { type: String, enum: ['Completed', 'Not Completed'], default: 'Not Completed' },
     comment: { type: String, default: '', trim: true },
+    notes: [
+      {
+        text: { type: String, required: true, trim: true },
+        author: { type: String, required: true, trim: true },
+        createdAt: { type: Date, default: Date.now },
+      },
+    ],
   },
   { timestamps: true }
 );

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Printer, MessageSquare, User, Phone, Mail } from 'lucide-react';
+import { Printer, MessageSquare, User, Phone, Mail, Send } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -13,21 +13,36 @@ import StatusPill from './StatusPill';
 import useOrderStore from '../store/orderStore';
 import { formatDateTime, formatDate } from '../lib/utils';
 
+const USERS = ['Linkon', 'Raki', 'Babu', 'Balli', 'Johana'];
+
+function timeAgo(dateStr) {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const m = Math.floor(diff / 60000);
+  if (m < 1) return 'just now';
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  const d = Math.floor(h / 24);
+  if (d < 7) return `${d}d ago`;
+  return new Date(dateStr).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+}
+
 function OrderDetailModal({ order, open, onClose }) {
-  const { updateOrderStatus, deleteOrder } = useOrderStore();
+  const { updateOrderStatus, deleteOrder, addNote } = useOrderStore();
   const [deleting, setDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const [commentEditing, setCommentEditing] = useState(false);
-  const [commentText, setCommentText] = useState('');
-  const [savingComment, setSavingComment] = useState(false);
+  const [noteText, setNoteText] = useState('');
+  const [noteAuthor, setNoteAuthor] = useState(
+    () => localStorage.getItem('sq_note_author') || USERS[0]
+  );
+  const [savingNote, setSavingNote] = useState(false);
 
   useEffect(() => {
     if (open) {
-      setCommentText(order?.comment || '');
-      setCommentEditing(false);
+      setNoteText('');
       setConfirmDelete(false);
     }
-  }, [open, order?._id, order?.comment]);
+  }, [open, order?._id]);
 
   if (!order) return null;
 
@@ -43,11 +58,13 @@ function OrderDetailModal({ order, open, onClose }) {
     onClose();
   };
 
-  const saveComment = async () => {
-    setSavingComment(true);
-    await updateOrderStatus(order._id, { comment: commentText.trim() });
-    setSavingComment(false);
-    setCommentEditing(false);
+  const submitNote = async () => {
+    if (!noteText.trim()) return;
+    setSavingNote(true);
+    localStorage.setItem('sq_note_author', noteAuthor);
+    await addNote(order._id, noteText.trim(), noteAuthor);
+    setNoteText('');
+    setSavingNote(false);
   };
 
   const handleDelete = async () => {
@@ -59,6 +76,8 @@ function OrderDetailModal({ order, open, onClose }) {
     await deleteOrder(order._id);
     onClose();
   };
+
+  const notes = [...(order.notes || [])].reverse();
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
@@ -88,10 +107,7 @@ function OrderDetailModal({ order, open, onClose }) {
             {order.customerPhone && (
               <p className="flex items-center gap-1.5 text-xs text-slate-700 mt-1">
                 <Phone className="w-3 h-3 text-slate-400" />
-                <a
-                  href={`tel:${order.customerPhone}`}
-                  className="hover:text-red-600"
-                >
+                <a href={`tel:${order.customerPhone}`} className="hover:text-red-600">
                   {order.customerPhone}
                 </a>
                 <a
@@ -111,10 +127,7 @@ function OrderDetailModal({ order, open, onClose }) {
             {order.customerEmail && (
               <p className="flex items-center gap-1.5 text-xs text-slate-700 mt-0.5 break-all">
                 <Mail className="w-3 h-3 text-slate-400" />
-                <a
-                  href={`mailto:${order.customerEmail}`}
-                  className="hover:text-red-600"
-                >
+                <a href={`mailto:${order.customerEmail}`} className="hover:text-red-600">
                   {order.customerEmail}
                 </a>
               </p>
@@ -161,59 +174,80 @@ function OrderDetailModal({ order, open, onClose }) {
             );
           })()}
 
+          {/* Notes history */}
           <div className="mt-3">
-            <div className="flex items-center justify-between mb-1.5">
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                <MessageSquare className="w-3 h-3" />
-                Comment
-              </p>
-              {!commentEditing && (
-                <button
-                  onClick={() => setCommentEditing(true)}
-                  className="text-[11px] font-bold text-red-600 hover:text-red-700 uppercase tracking-wider"
-                >
-                  {order.comment ? 'Edit' : 'Add Reason'}
-                </button>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5 mb-2">
+              <MessageSquare className="w-3 h-3" />
+              Notes
+              {notes.length > 0 && (
+                <span className="ml-1 bg-slate-200 text-slate-600 text-[9px] font-bold px-1.5 py-0.5 rounded-full">
+                  {notes.length}
+                </span>
               )}
-            </div>
+            </p>
 
-            {commentEditing ? (
-              <div className="space-y-2">
-                <textarea
-                  value={commentText}
-                  onChange={(e) => setCommentText(e.target.value)}
-                  rows={3}
-                  placeholder="Explain why this order isn't complete…"
-                  className="w-full text-sm border border-slate-200 rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent resize-none"
-                  autoFocus
-                />
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => {
-                      setCommentText(order.comment || '');
-                      setCommentEditing(false);
-                    }}
-                    disabled={savingComment}
-                    className="flex-1 text-xs font-bold py-2 rounded-lg border-2 border-slate-200 text-slate-700 hover:border-slate-300"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={saveComment}
-                    disabled={savingComment}
-                    className="flex-1 text-xs font-bold py-2 rounded-lg bg-black text-white hover:bg-slate-800 disabled:opacity-60"
-                  >
-                    {savingComment ? 'Saving…' : 'Save Comment'}
-                  </button>
-                </div>
+            {/* Existing legacy comment */}
+            {order.comment && (
+              <div className="mb-2 bg-amber-50 border border-amber-200 rounded-lg p-2.5">
+                <p className="text-[9px] font-bold text-amber-600 uppercase tracking-wider mb-1">Legacy note</p>
+                <p className="text-xs text-slate-800 whitespace-pre-wrap">{order.comment}</p>
               </div>
-            ) : order.comment ? (
-              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-slate-800 whitespace-pre-wrap">
-                {order.comment}
-              </div>
-            ) : (
-              <p className="text-xs text-slate-400 italic">No comment yet.</p>
             )}
+
+            {/* Notes list */}
+            {notes.length > 0 ? (
+              <div className="space-y-2 max-h-40 overflow-y-auto pr-1 mb-2">
+                {notes.map((note, i) => (
+                  <div key={i} className="flex gap-2">
+                    <div className="w-6 h-6 rounded-full bg-black text-white flex items-center justify-center text-[10px] font-extrabold flex-shrink-0 mt-0.5">
+                      {note.author?.[0]?.toUpperCase()}
+                    </div>
+                    <div className="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-2">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-[10px] font-extrabold text-black">{note.author}</span>
+                        <span className="text-[9px] text-slate-400">{timeAgo(note.createdAt)}</span>
+                      </div>
+                      <p className="text-xs text-slate-700 whitespace-pre-wrap">{note.text}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : !order.comment ? (
+              <p className="text-xs text-slate-400 italic mb-2">No notes yet.</p>
+            ) : null}
+
+            {/* Add note form */}
+            <div className="flex gap-2 items-end">
+              <select
+                value={noteAuthor}
+                onChange={(e) => setNoteAuthor(e.target.value)}
+                className="text-xs border border-slate-200 rounded-lg px-2 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-red-500 flex-shrink-0"
+              >
+                {USERS.map((u) => (
+                  <option key={u} value={u}>{u}</option>
+                ))}
+              </select>
+              <textarea
+                value={noteText}
+                onChange={(e) => setNoteText(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    submitNote();
+                  }
+                }}
+                rows={2}
+                placeholder="Add a note… (Enter to send)"
+                className="flex-1 text-xs border border-slate-200 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-red-500 resize-none"
+              />
+              <button
+                onClick={submitNote}
+                disabled={savingNote || !noteText.trim()}
+                className="flex-shrink-0 bg-black hover:bg-slate-800 disabled:opacity-40 text-white rounded-lg p-2 transition-colors"
+              >
+                <Send className="w-3.5 h-3.5" />
+              </button>
+            </div>
           </div>
 
           <a

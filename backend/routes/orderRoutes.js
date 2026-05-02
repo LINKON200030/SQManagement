@@ -7,6 +7,7 @@ const {
   getUpcomingOrders,
   getOrderById,
   updateOrder,
+  addNote,
   deleteOrder,
 } = require('../controllers/orderController');
 
@@ -16,6 +17,7 @@ router.get('/today', getTodayOrders);
 router.get('/upcoming', getUpcomingOrders);
 router.get('/:id', getOrderById);
 router.patch('/:id', updateOrder);
+router.post('/:id/notes', addNote);
 router.delete('/:id', deleteOrder);
 
 module.exports = router;
