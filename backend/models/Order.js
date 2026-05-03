@@ -20,6 +20,11 @@ const orderSchema = new mongoose.Schema(
     dueDate: { type: Date, required: [true, 'Due date is required'] },
     status: { type: String, enum: ['Completed', 'Not Completed'], default: 'Not Completed' },
     comment: { type: String, default: '', trim: true },
+    stripeFullPaymentUrl: { type: String, default: '' },
+    stripeFullPaymentLinkId: { type: String, default: '' },
+    stripeBalancePaymentUrl: { type: String, default: '' },
+    stripeBalancePaymentLinkId: { type: String, default: '' },
+    stripePaidAt: { type: Date },
   },
   { timestamps: true }
 );

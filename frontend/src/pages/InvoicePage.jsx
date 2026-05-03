@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { Printer, ArrowLeft, AlertTriangle } from 'lucide-react';
+import { Printer, ArrowLeft, AlertTriangle, CreditCard, ExternalLink, Copy, Check } from 'lucide-react';
 import { orderService } from '../services/api';
 import logo from '../public/images/logo.png';
 
@@ -279,6 +279,36 @@ function InvoicePage() {
             </div>
           </div>
 
+          {/* Stripe pay online — screen only */}
+          {(order.stripeFullPaymentUrl || order.stripeBalancePaymentUrl) && !isPaid && (
+            <div className="print:hidden px-8 sm:px-10 pb-4">
+              <div className="border border-slate-200 rounded-lg bg-white p-4">
+                <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-slate-400 mb-2 flex items-center gap-1.5">
+                  <CreditCard className="w-3 h-3" />
+                  Pay Online with Stripe
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {order.stripeFullPaymentUrl && (
+                    <PayOnlineButton
+                      label={`Pay Full ${fmt(gross)}`}
+                      url={order.stripeFullPaymentUrl}
+                      tone="black"
+                    />
+                  )}
+                  {order.stripeBalancePaymentUrl &&
+                    order.stripeBalancePaymentUrl !== order.stripeFullPaymentUrl &&
+                    balance > 0 && (
+                      <PayOnlineButton
+                        label={`Pay Balance ${fmt(balance)}`}
+                        url={order.stripeBalancePaymentUrl}
+                        tone="red"
+                      />
+                    )}
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Footer block — always pinned to bottom of A4 */}
           <div className="mt-auto">
           <div className="px-8 sm:px-10 py-4 grid grid-cols-1 sm:grid-cols-2 gap-6 border-t border-slate-200 bg-slate-50/60">
@@ -349,6 +379,46 @@ function InvoicePage() {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+function PayOnlineButton({ label, url, tone = 'black' }) {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch (err) {
+      console.error('Copy failed', err);
+    }
+  };
+  const tones = {
+    black: 'bg-black text-white hover:bg-slate-800',
+    red: 'bg-red-600 text-white hover:bg-red-700',
+  };
+  return (
+    <div className="flex items-stretch gap-2">
+      <a
+        href={url}
+        target="_blank"
+        rel="noreferrer"
+        className={`flex-1 inline-flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-bold transition-colors ${tones[tone]}`}
+      >
+        <ExternalLink className="w-3.5 h-3.5" />
+        {label}
+      </a>
+      <button
+        type="button"
+        onClick={handleCopy}
+        title={copied ? 'Copied' : 'Copy link'}
+        className="px-3 rounded-lg border-2 border-slate-200 text-slate-700 hover:border-black hover:text-black transition-colors"
+      >
+        {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+      </button>
     </div>
   );
 }

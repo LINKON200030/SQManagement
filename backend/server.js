@@ -10,6 +10,7 @@ const knowledgeRoutes = require('./routes/knowledgeRoutes');
 const announcementRoutes = require('./routes/announcementRoutes');
 const expenseRoutes = require('./routes/expenseRoutes');
 const websiteBookingRoutes = require('./routes/websiteBookingRoutes');
+const stripeWebhookRoutes = require('./routes/stripeWebhookRoutes');
 
 dotenv.config();
 
@@ -18,6 +19,8 @@ const app = express();
 connectDB();
 
 app.use(cors());
+
+app.use('/api/stripe', stripeWebhookRoutes);
 
 app.use(express.json());
 

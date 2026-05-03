@@ -1,5 +1,6 @@
 const Order = require('../models/Order');
 const Customer = require('../models/Customer');
+const { buildPaymentLinksForOrder, deactivatePaymentLink } = require('../lib/stripe');
 
 const createOrder = async (req, res) => {
   try {
@@ -66,6 +67,14 @@ const createOrder = async (req, res) => {
       }
     }
 
+    try {
+      const links = await buildPaymentLinksForOrder(order);
+      Object.assign(order, links);
+      await order.save();
+    } catch (stripeErr) {
+      console.error('Stripe payment link creation failed:', stripeErr.message);
+    }
+
     res.status(201).json(order);
   } catch (error) {
     res.status(400).json({ message: error.message });
@@ -122,11 +131,37 @@ const getOrderById = async (req, res) => {
 
 const updateOrder = async (req, res) => {
   try {
+    const existing = await Order.findById(req.params.id);
+    if (!existing) return res.status(404).json({ message: 'Order not found' });
+
+    const priceChanged =
+      req.body.price !== undefined && Number(req.body.price) !== Number(existing.price);
+    const advanceChanged =
+      req.body.advancePaid !== undefined &&
+      Number(req.body.advancePaid) !== Number(existing.advancePaid);
+
     const order = await Order.findByIdAndUpdate(req.params.id, req.body, {
       new: true,
       runValidators: true,
     });
-    if (!order) return res.status(404).json({ message: 'Order not found' });
+
+    if ((priceChanged || advanceChanged) && order.priceStatus !== 'Paid') {
+      try {
+        await Promise.all([
+          deactivatePaymentLink(order.stripeFullPaymentLinkId),
+          order.stripeBalancePaymentLinkId &&
+          order.stripeBalancePaymentLinkId !== order.stripeFullPaymentLinkId
+            ? deactivatePaymentLink(order.stripeBalancePaymentLinkId)
+            : Promise.resolve(),
+        ]);
+        const links = await buildPaymentLinksForOrder(order);
+        Object.assign(order, links);
+        await order.save();
+      } catch (stripeErr) {
+        console.error('Stripe payment link refresh failed:', stripeErr.message);
+      }
+    }
+
     res.json(order);
   } catch (error) {
     res.status(400).json({ message: error.message });
