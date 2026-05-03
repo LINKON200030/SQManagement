@@ -62,8 +62,8 @@ function OrderDetailModal({ order, open, onClose }) {
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-md p-0 overflow-hidden rounded-2xl border-0 shadow-2xl">
-        <div className="bg-black px-6 py-5 border-b-4 border-red-600">
+      <DialogContent className="max-w-md p-0 overflow-hidden rounded-2xl border-0 shadow-2xl max-h-[90vh] flex flex-col gap-0">
+        <div className="bg-black px-6 py-5 border-b-4 border-red-600 shrink-0">
           <div className="flex items-center gap-2 mb-2">
             <StatusPill type="tag" value={order.tag} />
           </div>
@@ -75,7 +75,7 @@ function OrderDetailModal({ order, open, onClose }) {
           </DialogDescription>
         </div>
 
-        <div className="px-6 py-5">
+        <div className="px-6 py-5 overflow-y-auto flex-1 min-h-0">
           {/* Customer info */}
           <div className="bg-red-50/60 border border-red-100 rounded-lg p-3 mb-3">
             <p className="text-[10px] font-bold text-red-600 uppercase tracking-wider mb-1.5">
@@ -253,7 +253,7 @@ function OrderDetailModal({ order, open, onClose }) {
           </a>
         </div>
 
-        <DialogFooter className="px-6 pb-5 flex-col sm:flex-row gap-2">
+        <DialogFooter className="px-6 py-3 flex-col sm:flex-row gap-2 shrink-0 border-t border-slate-100 bg-white">
           <button
             onClick={togglePayment}
             className="flex-1 text-sm font-bold py-2.5 rounded-lg border-2 border-slate-200 text-black hover:border-black hover:bg-black hover:text-white transition-colors"
