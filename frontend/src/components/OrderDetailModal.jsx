@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Printer, MessageSquare, User, Phone, Mail, CreditCard, Copy, Check, ExternalLink } from 'lucide-react';
+import { Printer, MessageSquare, User, Phone, Mail, CreditCard, Copy, Check, ExternalLink, Pencil, Sparkles } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -20,14 +20,23 @@ function OrderDetailModal({ order, open, onClose }) {
   const [commentEditing, setCommentEditing] = useState(false);
   const [commentText, setCommentText] = useState('');
   const [savingComment, setSavingComment] = useState(false);
+  const [priceEditing, setPriceEditing] = useState(false);
+  const [priceDraft, setPriceDraft] = useState('');
+  const [advanceDraft, setAdvanceDraft] = useState('');
+  const [savingPrice, setSavingPrice] = useState(false);
+  const [priceError, setPriceError] = useState('');
 
   useEffect(() => {
     if (open) {
       setCommentText(order?.comment || '');
       setCommentEditing(false);
       setConfirmDelete(false);
+      setPriceEditing(false);
+      setPriceDraft(order?.price ? String(order.price) : '');
+      setAdvanceDraft(order?.advancePaid ? String(order.advancePaid) : '');
+      setPriceError('');
     }
-  }, [open, order?._id, order?.comment]);
+  }, [open, order?._id, order?.comment, order?.price, order?.advancePaid]);
 
   if (!order) return null;
 
@@ -41,6 +50,28 @@ function OrderDetailModal({ order, open, onClose }) {
     const newStatus = order.priceStatus === 'Paid' ? 'Unpaid' : 'Paid';
     await updateOrderStatus(order._id, { priceStatus: newStatus });
     onClose();
+  };
+
+  const savePrice = async () => {
+    setPriceError('');
+    const price = Number(priceDraft);
+    const advance = Number(advanceDraft) || 0;
+    if (!Number.isFinite(price) || price < 0) {
+      setPriceError('Price must be 0 or greater');
+      return;
+    }
+    if (advance < 0 || advance > price) {
+      setPriceError('Advance must be between 0 and price');
+      return;
+    }
+    setSavingPrice(true);
+    const res = await updateOrderStatus(order._id, { price, advancePaid: advance });
+    setSavingPrice(false);
+    if (res?.success) {
+      setPriceEditing(false);
+    } else {
+      setPriceError(res?.error || 'Failed to save price');
+    }
   };
 
   const saveComment = async () => {
@@ -157,6 +188,94 @@ function OrderDetailModal({ order, open, onClose }) {
                     tone={due > 0 ? 'red' : 'green'}
                   />
                 </div>
+
+                {/* Price editor */}
+                {priceEditing ? (
+                  <div className="mt-3 border-2 border-red-200 bg-red-50/40 rounded-lg p-3 space-y-2">
+                    <p className="text-[10px] font-extrabold uppercase tracking-wider text-red-600">
+                      Set Price
+                    </p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <label className="block">
+                        <span className="text-[10px] font-bold text-slate-500 uppercase">Total (£)</span>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={priceDraft}
+                          onChange={(e) => setPriceDraft(e.target.value)}
+                          className="mt-1 w-full text-sm border border-slate-300 rounded-md px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-red-500"
+                          autoFocus
+                        />
+                      </label>
+                      <label className="block">
+                        <span className="text-[10px] font-bold text-slate-500 uppercase">Advance (£)</span>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={advanceDraft}
+                          onChange={(e) => setAdvanceDraft(e.target.value)}
+                          className="mt-1 w-full text-sm border border-slate-300 rounded-md px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-red-500"
+                        />
+                      </label>
+                    </div>
+                    {priceError && (
+                      <p className="text-xs text-red-600 font-semibold">{priceError}</p>
+                    )}
+                    <div className="flex gap-2 pt-1">
+                      <button
+                        onClick={() => {
+                          setPriceEditing(false);
+                          setPriceDraft(order.price ? String(order.price) : '');
+                          setAdvanceDraft(order.advancePaid ? String(order.advancePaid) : '');
+                          setPriceError('');
+                        }}
+                        disabled={savingPrice}
+                        className="flex-1 text-xs font-bold py-2 rounded-md border-2 border-slate-200 text-slate-700 hover:border-slate-300"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={savePrice}
+                        disabled={savingPrice}
+                        className="flex-1 text-xs font-bold py-2 rounded-md bg-black text-white hover:bg-slate-800 disabled:opacity-60 inline-flex items-center justify-center gap-1.5"
+                      >
+                        {savingPrice ? (
+                          'Saving…'
+                        ) : (
+                          <>
+                            <Sparkles className="w-3.5 h-3.5" />
+                            Save & Generate Link
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  order.priceStatus !== 'Paid' && (
+                    <button
+                      onClick={() => setPriceEditing(true)}
+                      className={`mt-3 w-full inline-flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-bold transition-colors ${
+                        total === 0
+                          ? 'bg-red-600 text-white hover:bg-red-700 shadow-md shadow-red-900/20'
+                          : 'border-2 border-slate-200 text-slate-700 hover:border-black hover:text-black'
+                      }`}
+                    >
+                      {total === 0 ? (
+                        <>
+                          <Sparkles className="w-3.5 h-3.5" />
+                          Set Price & Create Payment Link
+                        </>
+                      ) : (
+                        <>
+                          <Pencil className="w-3.5 h-3.5" />
+                          Edit Price / Advance
+                        </>
+                      )}
+                    </button>
+                  )
+                )}
               </>
             );
           })()}
