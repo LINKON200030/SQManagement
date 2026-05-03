@@ -1,6 +1,7 @@
 const Order = require('../models/Order');
 const Customer = require('../models/Customer');
 const { buildPaymentLinksForOrder, deactivatePaymentLink } = require('../lib/stripe');
+const { createOrderWithRetry } = require('../lib/invoiceNumber');
 
 const createOrder = async (req, res) => {
   try {
@@ -34,38 +35,14 @@ const createOrder = async (req, res) => {
       });
     }
 
-    const year = new Date().getFullYear();
-
-    const nextInvoiceNumber = async () => {
-      const last = await Order.findOne({ invoiceNumber: new RegExp(`^INV-${year}-`) })
-        .sort({ invoiceNumber: -1 })
-        .select('invoiceNumber')
-        .lean();
-      let seq = 1;
-      if (last?.invoiceNumber) {
-        const parsed = parseInt(last.invoiceNumber.split('-')[2], 10);
-        if (Number.isFinite(parsed)) seq = parsed + 1;
-      }
-      return `INV-${year}-${String(seq).padStart(4, '0')}`;
-    };
-
-    let order;
-    for (let attempt = 0; attempt < 5; attempt += 1) {
-      try {
-        order = await Order.create({
-          ...req.body,
-          invoiceNumber: await nextInvoiceNumber(),
-          customer: customer._id,
-          customerName: customer.name,
-          customerPhone: customer.phone,
-          customerEmail: customer.email,
-        });
-        break;
-      } catch (err) {
-        if (err?.code === 11000 && err?.keyPattern?.invoiceNumber && attempt < 4) continue;
-        throw err;
-      }
-    }
+    const order = await createOrderWithRetry((invoiceNumber) => ({
+      ...req.body,
+      invoiceNumber,
+      customer: customer._id,
+      customerName: customer.name,
+      customerPhone: customer.phone,
+      customerEmail: customer.email,
+    }));
 
     try {
       const links = await buildPaymentLinksForOrder(order);

@@ -1,5 +1,6 @@
 const Order = require('../models/Order');
 const Customer = require('../models/Customer');
+const { createOrderWithRetry } = require('../lib/invoiceNumber');
 
 const DEFAULT_ORDER_BY = 'Linkon';
 const DEFAULT_ASSIGNED_TO = 'Linkon';
@@ -84,14 +85,9 @@ const createWebsiteBooking = async (req, res) => {
       customer = await Customer.create({ name, phone, email, ordersCount: 1 });
     }
 
-    const year = new Date().getFullYear();
-    const yearStart = new Date(year, 0, 1);
-    const yearCount = await Order.countDocuments({ createdAt: { $gte: yearStart } });
-    const invoiceNumber = `INV-${year}-${String(yearCount + 1).padStart(4, '0')}`;
-
     const { title, description } = buildOrderFields(data);
 
-    const order = await Order.create({
+    const order = await createOrderWithRetry((invoiceNumber) => ({
       invoiceNumber,
       customer: customer._id,
       customerName: customer.name,
@@ -107,7 +103,7 @@ const createWebsiteBooking = async (req, res) => {
       tag: DEFAULT_TAG,
       dueDate,
       comment: '[Website booking]',
-    });
+    }));
 
     res.status(201).json({ ok: true, orderId: order._id, invoiceNumber: order.invoiceNumber });
   } catch (err) {
