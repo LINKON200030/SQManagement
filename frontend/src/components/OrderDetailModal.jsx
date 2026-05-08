@@ -40,9 +40,18 @@ function OrderDetailModal({ order, open, onClose }) {
 
   if (!order) return null;
 
-  const toggleStatus = async () => {
-    const newStatus = order.status === 'Completed' ? 'Not Completed' : 'Completed';
-    await updateOrderStatus(order._id, { status: newStatus });
+  const STATUS_FLOW = ['In Processing', 'Ready for Collection', 'Delivered'];
+  const currentIndex = Math.max(0, STATUS_FLOW.indexOf(order.status));
+  const nextStatus = STATUS_FLOW[(currentIndex + 1) % STATUS_FLOW.length];
+
+  const advanceStatus = async () => {
+    await updateOrderStatus(order._id, { status: nextStatus });
+    onClose();
+  };
+
+  const setStatus = async (status) => {
+    if (status === order.status) return;
+    await updateOrderStatus(order._id, { status });
     onClose();
   };
 
@@ -172,7 +181,7 @@ function OrderDetailModal({ order, open, onClose }) {
                   </div>
                   <div className="bg-slate-50 border border-slate-200 rounded-lg p-3">
                     <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">
-                      Completion
+                      Stage
                     </p>
                     <StatusPill type="status" value={order.status} />
                   </div>
@@ -276,6 +285,32 @@ function OrderDetailModal({ order, open, onClose }) {
                     </button>
                   )
                 )}
+
+                {/* Stage picker */}
+                <div className="mt-3">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
+                    Order Stage
+                  </p>
+                  <div className="grid grid-cols-3 gap-2">
+                    {STATUS_FLOW.map((s) => {
+                      const active = order.status === s;
+                      return (
+                        <button
+                          key={s}
+                          type="button"
+                          onClick={() => setStatus(s)}
+                          className={`text-[11px] font-bold py-2 rounded-lg border-2 transition-colors leading-tight ${
+                            active
+                              ? 'bg-black text-white border-black'
+                              : 'bg-white text-slate-700 border-slate-200 hover:border-black'
+                          }`}
+                        >
+                          {s}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
               </>
             );
           })()}
@@ -302,7 +337,7 @@ function OrderDetailModal({ order, open, onClose }) {
                   value={commentText}
                   onChange={(e) => setCommentText(e.target.value)}
                   rows={3}
-                  placeholder="Explain why this order isn't complete…"
+                  placeholder="Add a note about this order's stage…"
                   className="w-full text-sm border border-slate-200 rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent resize-none"
                   autoFocus
                 />
@@ -365,7 +400,7 @@ function OrderDetailModal({ order, open, onClose }) {
             href={`/invoice/${order._id}`}
             target="_blank"
             rel="noreferrer"
-            className="mt-4 inline-flex items-center justify-center gap-2 w-full bg-red-600 hover:bg-red-700 text-white py-2.5 rounded-lg text-sm font-bold shadow-md shadow-red-900/20 transition-all"
+            className="mt-3 inline-flex items-center justify-center gap-2 w-full bg-red-600 hover:bg-red-700 text-white py-2.5 rounded-lg text-sm font-bold shadow-md shadow-red-900/20 transition-all"
           >
             <Printer className="w-4 h-4" />
             Print VAT Invoice
@@ -380,14 +415,14 @@ function OrderDetailModal({ order, open, onClose }) {
             Mark as {order.priceStatus === 'Paid' ? 'Unpaid' : 'Paid'}
           </button>
           <button
-            onClick={toggleStatus}
+            onClick={advanceStatus}
             className={`flex-1 text-sm font-bold py-2.5 rounded-lg transition-colors ${
-              order.status === 'Completed'
+              order.status === 'Delivered'
                 ? 'bg-slate-100 text-slate-700 hover:bg-slate-200'
                 : 'bg-black text-white hover:bg-slate-800'
             }`}
           >
-            {order.status === 'Completed' ? 'Mark Pending' : 'Mark Completed'}
+            Mark {nextStatus}
           </button>
           <button
             onClick={handleDelete}

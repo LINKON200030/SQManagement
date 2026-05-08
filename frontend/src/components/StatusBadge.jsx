@@ -1,17 +1,25 @@
 import { cn } from '../lib/utils';
 
+const STATUS_STYLES = {
+  Delivered: { className: 'bg-emerald-100 text-emerald-800', label: '✓ Delivered' },
+  'Ready for Collection': {
+    className: 'bg-amber-100 text-amber-800',
+    label: '◐ Ready for Collection',
+  },
+  'In Processing': { className: 'bg-slate-100 text-slate-600', label: '○ In Processing' },
+};
+
 function StatusBadge({ type, value }) {
   if (type === 'status') {
+    const style = STATUS_STYLES[value] || STATUS_STYLES['In Processing'];
     return (
       <span
         className={cn(
           'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium',
-          value === 'Completed'
-            ? 'bg-emerald-100 text-emerald-800'
-            : 'bg-slate-100 text-slate-600'
+          style.className
         )}
       >
-        {value === 'Completed' ? '✓ Completed' : '○ Pending'}
+        {style.label}
       </span>
     );
   }

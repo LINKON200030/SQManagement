@@ -18,7 +18,11 @@ const orderSchema = new mongoose.Schema(
     assignedTo: { type: String, enum: USERS, required: [true, 'Assigned to is required'] },
     tag: { type: String, enum: ['Emergency', 'Flexible'], required: [true, 'Tag is required'] },
     dueDate: { type: Date, required: [true, 'Due date is required'] },
-    status: { type: String, enum: ['Completed', 'Not Completed'], default: 'Not Completed' },
+    status: {
+      type: String,
+      enum: ['In Processing', 'Ready for Collection', 'Delivered'],
+      default: 'In Processing',
+    },
     comment: { type: String, default: '', trim: true },
     stripeFullPaymentUrl: { type: String, default: '' },
     stripeFullPaymentLinkId: { type: String, default: '' },

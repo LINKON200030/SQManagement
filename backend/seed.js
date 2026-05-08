@@ -20,7 +20,7 @@ const sampleOrders = [
     assignedTo: 'Raki',
     tag: 'Emergency',
     dueDate: d(2),
-    status: 'Not Completed',
+    status: 'In Processing',
   },
   {
     customerName: 'TechCorp BD',
@@ -34,7 +34,7 @@ const sampleOrders = [
     assignedTo: 'Linkon',
     tag: 'Flexible',
     dueDate: d(5),
-    status: 'Not Completed',
+    status: 'In Processing',
   },
   {
     customerName: 'Hasan & Nadia',
@@ -48,7 +48,7 @@ const sampleOrders = [
     assignedTo: 'Balli',
     tag: 'Flexible',
     dueDate: d(3),
-    status: 'Not Completed',
+    status: 'In Processing',
   },
   {
     customerName: 'Fashion Boutique',
@@ -62,7 +62,7 @@ const sampleOrders = [
     assignedTo: 'Babu',
     tag: 'Flexible',
     dueDate: d(28),
-    status: 'Not Completed',
+    status: 'In Processing',
   },
   {
     customerName: 'Karim Family',
@@ -76,7 +76,7 @@ const sampleOrders = [
     assignedTo: 'Balli',
     tag: 'Emergency',
     dueDate: d(36),
-    status: 'Not Completed',
+    status: 'Ready for Collection',
   },
   {
     customerName: 'Rahman Family',
@@ -90,7 +90,7 @@ const sampleOrders = [
     assignedTo: 'Johana',
     tag: 'Flexible',
     dueDate: d(48),
-    status: 'Completed',
+    status: 'Delivered',
   },
   {
     customerName: 'BRAC',
@@ -104,7 +104,7 @@ const sampleOrders = [
     assignedTo: 'Raki',
     tag: 'Emergency',
     dueDate: d(72),
-    status: 'Not Completed',
+    status: 'In Processing',
   },
   {
     customerName: 'Creator Studio',
@@ -118,7 +118,7 @@ const sampleOrders = [
     assignedTo: 'Linkon',
     tag: 'Flexible',
     dueDate: d(96),
-    status: 'Not Completed',
+    status: 'In Processing',
   },
 ];
 

@@ -84,9 +84,10 @@ function AllOrdersPage() {
             onChange={(e) => setFilters({ ...filters, status: e.target.value })}
             className={SELECT_CLASS}
           >
-            <option value="">All Status</option>
-            <option value="Completed">Completed</option>
-            <option value="Not Completed">Not Completed</option>
+            <option value="">All Stages</option>
+            <option value="In Processing">In Processing</option>
+            <option value="Ready for Collection">Ready for Collection</option>
+            <option value="Delivered">Delivered</option>
           </select>
 
           <select

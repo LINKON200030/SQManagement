@@ -28,5 +28,5 @@ export function isOrderUpcoming(date) {
 }
 
 export function isOverdue(date, status) {
-  return isPast(new Date(date)) && status !== 'Completed';
+  return isPast(new Date(date)) && status !== 'Delivered';
 }
