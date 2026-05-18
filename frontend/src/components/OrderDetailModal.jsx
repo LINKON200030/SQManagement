@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Printer, MessageSquare, User, Phone, Mail, CreditCard, Copy, Check, ExternalLink, Pencil, Sparkles } from 'lucide-react';
+import { Printer, MessageSquare, User, Phone, Mail, CreditCard, Copy, Check, ExternalLink, Pencil, Sparkles, Star } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -12,6 +12,8 @@ import { Button } from './ui/button';
 import StatusPill from './StatusPill';
 import useOrderStore from '../store/orderStore';
 import { formatDateTime, formatDate } from '../lib/utils';
+
+const GOOGLE_REVIEW_URL = 'https://g.page/r/CehZsd_aWWMZEBM/review';
 
 function OrderDetailModal({ order, open, onClose }) {
   const { updateOrderStatus, deleteOrder } = useOrderStore();
@@ -396,6 +398,46 @@ function OrderDetailModal({ order, open, onClose }) {
             </div>
           )}
 
+          {order.status === 'Delivered' && (order.customerEmail || order.customerPhone) && (
+            <div className="mt-4 bg-amber-50/70 border border-amber-200 rounded-lg p-3">
+              <p className="text-[10px] font-bold text-amber-700 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                <Star className="w-3 h-3 fill-amber-500 text-amber-500" />
+                Ask for a Review
+              </p>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {order.customerEmail && (
+                  <a
+                    href={buildHostingerReviewUrl(order)}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-bold bg-black text-white hover:bg-slate-800 transition-colors"
+                  >
+                    <Mail className="w-3.5 h-3.5" />
+                    Email Review Request
+                  </a>
+                )}
+                {order.customerPhone && (
+                  <a
+                    href={buildWhatsAppReviewUrl(order)}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-bold bg-green-600 text-white hover:bg-green-700 transition-colors"
+                  >
+                    <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/>
+                      <path d="M12 0C5.373 0 0 5.373 0 12c0 2.117.554 4.103 1.523 5.828L.057 23.428a.5.5 0 0 0 .609.61l5.7-1.498A11.955 11.955 0 0 0 12 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 22c-1.886 0-3.66-.502-5.193-1.378l-.372-.217-3.849 1.01 1.025-3.737-.235-.386A9.955 9.955 0 0 1 2 12C2 6.477 6.477 2 12 2s10 4.477 10 10-4.477 10-10 10z"/>
+                    </svg>
+                    WhatsApp Review Request
+                  </a>
+                )}
+              </div>
+              <ReviewLinkBar url={GOOGLE_REVIEW_URL} />
+              <p className="text-[10px] text-amber-700/80 mt-2 leading-snug">
+                Opens a pre-filled message — review it and hit send.
+              </p>
+            </div>
+          )}
+
           <a
             href={`/invoice/${order._id}`}
             target="_blank"
@@ -490,6 +532,45 @@ function PaymentLinkRow({ label, url, tone = 'black' }) {
   );
 }
 
+function ReviewLinkBar({ url }) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch (e) {
+      console.error('Copy failed', e);
+    }
+  };
+  return (
+    <div className="mt-2 relative overflow-hidden rounded-lg bg-gradient-to-br from-amber-400 via-amber-500 to-yellow-500 p-[2px] shadow-lg shadow-amber-500/20">
+      <div className="flex items-stretch gap-1 rounded-[6px] bg-white">
+        <a
+          href={url}
+          target="_blank"
+          rel="noreferrer"
+          className="flex-1 inline-flex items-center justify-center gap-2 py-2.5 px-3 text-xs font-extrabold text-amber-700 hover:bg-amber-50 transition-colors rounded-l-[6px]"
+        >
+          <Star className="w-3.5 h-3.5 fill-amber-500 text-amber-500" />
+          <span className="tracking-wide">Open Google Review Page</span>
+          <ExternalLink className="w-3 h-3" />
+        </a>
+        <button
+          type="button"
+          onClick={copy}
+          title={copied ? 'Copied!' : 'Copy review link'}
+          className={`px-3 inline-flex items-center justify-center transition-colors rounded-r-[6px] ${
+            copied ? 'text-green-600 bg-green-50' : 'text-amber-700 hover:bg-amber-50'
+          }`}
+        >
+          {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function MoneyCard({ label, value, tone = 'slate' }) {
   const tones = {
     black: 'bg-black text-white border-black',
@@ -509,6 +590,47 @@ function MoneyCard({ label, value, tone = 'slate' }) {
       <p className="text-base font-extrabold font-mono">{value}</p>
     </div>
   );
+}
+
+function firstName(fullName) {
+  return (fullName || '').trim().split(/\s+/)[0] || 'there';
+}
+
+function buildHostingerReviewUrl(order) {
+  const subject = `Thank you for choosing Surrey Quays Photo Studio`;
+  const body = `Hi ${firstName(order.customerName)},
+
+Thank you for choosing Surrey Quays Photo Studio for your ${order.title}. We hope you're delighted with the result!
+
+If you have a moment, we'd really appreciate a quick Google review — it helps our small studio enormously.
+
+⭐ Leave your review here:
+${GOOGLE_REVIEW_URL}
+
+Warm regards,
+Surrey Quays Photo Studio
+support@surreyquaysphotostudio.com`;
+
+  const params = new URLSearchParams({
+    _task: 'mail',
+    _action: 'compose',
+    _to: order.customerEmail,
+    _subject: subject,
+    _body: body,
+  });
+  return `https://mail.hostinger.com/?${params.toString()}`;
+}
+
+function buildWhatsAppReviewUrl(order) {
+  const phone = (order.customerPhone || '').replace(/\D/g, '').replace(/^0/, '44');
+  const text = `Hi ${firstName(order.customerName)}, thank you for choosing Surrey Quays Photo Studio for your *${order.title}*! ✨
+
+If you have a moment, we'd really appreciate a quick Google review — it helps our small studio enormously:
+
+⭐ ${GOOGLE_REVIEW_URL}
+
+— Surrey Quays Photo Studio`;
+  return `https://wa.me/${phone}?text=${encodeURIComponent(text)}`;
 }
 
 export default OrderDetailModal;
