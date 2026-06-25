@@ -295,6 +295,7 @@ function GalleryDetailModal({ gallery: initial, onClose, onChanged }) {
   const [error, setError] = useState('');
   const [orders, setOrders] = useState([]);
   const [uploadPct, setUploadPct] = useState(0);
+  const [uploadErrors, setUploadErrors] = useState([]);
   const [copied, setCopied] = useState(false);
   const fileInputRef = useRef(null);
   const dropRef = useRef(null);
@@ -325,11 +326,22 @@ function GalleryDetailModal({ gallery: initial, onClose, onChanged }) {
   const upload = async (files) => {
     const arr = Array.from(files || []).filter((f) => f.type.startsWith('image/'));
     if (!arr.length) return;
+    if (arr.length > 20) {
+      setError('Maximum 20 photos per upload — please split into smaller batches.');
+      return;
+    }
+    const oversize = arr.find((f) => f.size > 15 * 1024 * 1024);
+    if (oversize) {
+      setError(`"${oversize.name}" is over 15 MB — please resize first.`);
+      return;
+    }
     setBusy(true);
     setError('');
+    setUploadErrors([]);
     setUploadPct(0);
     try {
-      await galleryService.uploadPhotos(gallery._id, arr, setUploadPct);
+      const res = await galleryService.uploadPhotos(gallery._id, arr, setUploadPct);
+      if (res.data?.errors?.length) setUploadErrors(res.data.errors);
       await refresh();
       onChanged();
     } catch (err) {
@@ -459,7 +471,7 @@ function GalleryDetailModal({ gallery: initial, onClose, onChanged }) {
             <p className="text-sm font-bold text-slate-700">
               {busy ? `Uploading… ${uploadPct}%` : 'Drop photos here or click to choose'}
             </p>
-            <p className="text-xs text-slate-500 mt-1">JPEG/PNG · up to 30 MB each · web variant resized + watermarked server-side</p>
+            <p className="text-xs text-slate-500 mt-1">JPEG/PNG · up to 15 MB each, 20 per batch · web variant resized + watermarked server-side</p>
             <input
               ref={fileInputRef}
               type="file"
@@ -474,6 +486,19 @@ function GalleryDetailModal({ gallery: initial, onClose, onChanged }) {
               </div>
             )}
           </div>
+
+          {uploadErrors.length > 0 && (
+            <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-800 text-sm">
+              <p className="font-bold mb-1">{uploadErrors.length} photo{uploadErrors.length === 1 ? '' : 's'} failed:</p>
+              <ul className="list-disc list-inside space-y-0.5 text-xs">
+                {uploadErrors.map((e, i) => (
+                  <li key={i}>
+                    <span className="font-mono">{e.name || '(unnamed)'}</span> — {e.reason}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
 
           {gallery.photos.length === 0 ? (
             <div className="text-center text-sm text-slate-400 py-8">No photos uploaded yet.</div>

@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const Gallery = require('../models/Gallery');
 const GalleryOrder = require('../models/GalleryOrder');
@@ -157,54 +158,84 @@ const deleteGallery = async (req, res) => {
 };
 
 const uploadPhotos = async (req, res) => {
+  const t0 = Date.now();
+  const galleryId = req.params.id;
+  const fileCount = req.files?.length || 0;
+  console.log(`[gallery-upload] start gallery=${galleryId} files=${fileCount}`);
+
   try {
-    const g = await Gallery.findById(req.params.id);
+    const g = await Gallery.findById(galleryId);
     if (!g) return res.status(404).json({ message: 'Gallery not found' });
-    if (!req.files || !req.files.length) {
+    if (!fileCount) {
       return res.status(400).json({ message: 'No files uploaded (field name: "files")' });
     }
 
     const watermarkEnabled = g.settings?.watermarkEnabled !== false;
     const created = [];
+    const failed = [];
     let order = g.photos.length;
 
-    for (const file of req.files) {
-      if (!file.mimetype?.startsWith('image/')) continue;
+    // Sequential, not parallel — sharp + multer memoryStorage can balloon RAM
+    // fast (each large JPEG decodes to width*height*3 bytes uncompressed).
+    // On Render free tier (512 MB) this is the safest cadence; if you upgrade
+    // you can revisit and add a small concurrency cap.
+    for (const [i, file] of req.files.entries()) {
+      const label = `${i + 1}/${fileCount} ${file.originalname || '(no name)'}`;
+      const fileStart = Date.now();
 
-      // Allocate a photo id up-front so r2 keys can use it.
-      const photoId = new (require('mongoose').Types.ObjectId)();
-      const webKey = galleryPhotoKey({ galleryId: g._id, variant: 'web', photoId, ext: 'jpg' });
-      const fullKey = galleryPhotoKey({ galleryId: g._id, variant: 'full', photoId, ext: 'jpg' });
+      if (!file.mimetype?.startsWith('image/')) {
+        console.warn(`[gallery-upload] skip ${label} — not an image (${file.mimetype})`);
+        failed.push({ name: file.originalname || '', reason: `not an image (${file.mimetype})` });
+        continue;
+      }
 
-      const [webBuffer, fullBuffer] = await Promise.all([
-        buildWebVariant(file.buffer, { watermarkEnabled }),
-        normalizeFullVariant(file.buffer),
-      ]);
+      try {
+        const photoId = new mongoose.Types.ObjectId();
+        const webKey = galleryPhotoKey({ galleryId: g._id, variant: 'web', photoId, ext: 'jpg' });
+        const fullKey = galleryPhotoKey({ galleryId: g._id, variant: 'full', photoId, ext: 'jpg' });
 
-      await Promise.all([
-        putObject({ key: webKey, body: webBuffer, contentType: 'image/jpeg' }),
-        putObject({ key: fullKey, body: fullBuffer, contentType: 'image/jpeg' }),
-      ]);
+        const webBuffer = await buildWebVariant(file.buffer, { watermarkEnabled });
+        console.log(`[gallery-upload] ${label} sharp:web ok ${webBuffer.length}B`);
+        const fullBuffer = await normalizeFullVariant(file.buffer);
+        console.log(`[gallery-upload] ${label} sharp:full ok ${fullBuffer.length}B`);
 
-      const photo = {
-        _id: photoId,
-        r2KeyWeb: webKey,
-        r2KeyFull: fullKey,
-        originalName: file.originalname || '',
-        contentType: 'image/jpeg',
-        bytes: fullBuffer.length,
-        isHighlight: false,
-        order: order++,
-      };
-      g.photos.push(photo);
-      created.push({ _id: photoId, originalName: photo.originalName, bytes: photo.bytes });
+        await putObject({ key: webKey, body: webBuffer, contentType: 'image/jpeg' });
+        await putObject({ key: fullKey, body: fullBuffer, contentType: 'image/jpeg' });
+        console.log(`[gallery-upload] ${label} r2 ok`);
+
+        g.photos.push({
+          _id: photoId,
+          r2KeyWeb: webKey,
+          r2KeyFull: fullKey,
+          originalName: file.originalname || '',
+          contentType: 'image/jpeg',
+          bytes: fullBuffer.length,
+          isHighlight: false,
+          order: order++,
+        });
+        created.push({ _id: photoId, originalName: file.originalname || '', bytes: fullBuffer.length });
+        console.log(`[gallery-upload] ${label} done in ${Date.now() - fileStart}ms`);
+      } catch (err) {
+        console.error(`[gallery-upload] ${label} FAILED:`, err && err.stack ? err.stack : err);
+        failed.push({ name: file.originalname || '', reason: err?.message || String(err) });
+        // Keep going — one bad file shouldn't kill the batch.
+      }
     }
 
-    await g.save();
-    res.status(201).json({ added: created.length, photos: created, gallery: adminGalleryView(g) });
+    if (created.length) await g.save();
+    console.log(
+      `[gallery-upload] done ok=${created.length} failed=${failed.length} totalMs=${Date.now() - t0}`
+    );
+    res.status(201).json({
+      added: created.length,
+      failedCount: failed.length,
+      photos: created,
+      errors: failed,
+      gallery: adminGalleryView(g),
+    });
   } catch (err) {
-    console.error('uploadPhotos error:', err);
-    res.status(500).json({ message: err.message });
+    console.error('[gallery-upload] handler error:', err && err.stack ? err.stack : err);
+    res.status(500).json({ message: err?.message || 'Upload failed' });
   }
 };
 
