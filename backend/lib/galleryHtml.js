@@ -41,8 +41,7 @@ const layout = ({ title, body, extraHead = '' }) => `<!doctype html>
   .pw .err{color:#ff7a7a;font-size:13px;margin-bottom:10px}
   /* Faint CSS watermark overlay — repeats over the grid in addition to the
      burned-in watermark. Honest comment: this only deters casual screenshotting;
-     a determined user can disable CSS or inspect images. The burned-in
-     watermark on the web variant is the real signal. */
+     a determined user can disable CSS or inspect images. */
   .wm-overlay{pointer-events:none;position:absolute;inset:0;background-image:repeating-linear-gradient(-30deg,rgba(255,255,255,0.06) 0 1px,transparent 1px 140px);mix-blend-mode:overlay}
   /* Lightbox */
   .lb{position:fixed;inset:0;background:rgba(0,0,0,0.92);display:none;align-items:center;justify-content:center;z-index:50}
@@ -55,6 +54,32 @@ const layout = ({ title, body, extraHead = '' }) => `<!doctype html>
   .lb .lb-actions a,.lb .lb-actions button{background:#fff;color:#000;border:none;padding:9px 14px;border-radius:8px;font-weight:600;font-size:13px;cursor:pointer;text-decoration:none}
   /* mobile long-press save deterrent */
   img,.tile{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
+  /* Store modal */
+  .store{position:fixed;inset:0;background:rgba(0,0,0,0.7);display:none;align-items:center;justify-content:center;z-index:60;padding:20px}
+  .store.open{display:flex}
+  .store-card{background:#15151a;border:1px solid #232329;border-radius:14px;max-width:680px;width:100%;max-height:88vh;overflow-y:auto;padding:24px;color:#f5f5f7}
+  .store-card h2{margin:0 0 4px;font-size:20px}
+  .store-card .sub{color:#9a9aa3;font-size:13px;margin:0 0 18px}
+  .store-card .close{position:absolute;top:18px;right:22px;background:transparent;color:#fff;border:none;font-size:24px;cursor:pointer}
+  .store-card .empty{color:#7a7a83;text-align:center;padding:30px 0;font-size:14px}
+  .products{display:grid;grid-template-columns:1fr;gap:10px;margin-bottom:18px}
+  .product{display:flex;align-items:center;gap:12px;padding:12px 14px;background:#0b0b0d;border:1px solid #232329;border-radius:10px;cursor:pointer}
+  .product.selected{border-color:#fff;background:#1a1a20}
+  .product .name{font-weight:600;font-size:14px}
+  .product .desc{color:#9a9aa3;font-size:12px;margin-top:2px}
+  .product .price{margin-left:auto;font-weight:700;font-size:15px}
+  .qty{display:flex;align-items:center;gap:8px}
+  .qty button{width:32px;height:32px;border:1px solid #2a2a31;background:#0b0b0d;color:#fff;border-radius:6px;cursor:pointer;font-size:16px}
+  .qty span{min-width:24px;text-align:center;font-weight:600}
+  .field{margin-bottom:12px}
+  .field label{display:block;font-size:12px;font-weight:600;color:#9a9aa3;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.06em}
+  .field input{width:100%;padding:11px 12px;background:#0b0b0d;border:1px solid #2a2a31;border-radius:8px;color:#fff;font-size:14px}
+  .photo-pick{display:flex;align-items:center;gap:10px;padding:10px;background:#0b0b0d;border:1px solid #232329;border-radius:8px;margin-bottom:12px}
+  .photo-pick img{width:48px;height:48px;object-fit:cover;border-radius:4px}
+  .summary{padding:12px 14px;background:#0b0b0d;border:1px solid #232329;border-radius:10px;margin-bottom:16px;display:flex;justify-content:space-between;font-weight:700}
+  .store-card .btn{display:block;width:100%;padding:13px;background:#fff;color:#000;border:none;border-radius:8px;font-weight:700;cursor:pointer;font-size:15px}
+  .store-card .btn:disabled{opacity:0.4;cursor:not-allowed}
+  .store-card .err{color:#ff7a7a;font-size:13px;margin-bottom:10px}
   footer{padding:30px 20px;text-align:center;color:#5a5a63;font-size:12px}
 </style>
 ${extraHead}
@@ -64,13 +89,13 @@ ${body}
 </body>
 </html>`;
 
-const renderPasswordPage = ({ token, error }) => {
+const renderPasswordPage = ({ slug, error }) => {
   const body = `
     <div class="pw">
       <h2>Private gallery</h2>
       <p>Please enter the password your photographer shared with you.</p>
       ${error ? `<div class="err">${escapeHtml(error)}</div>` : ''}
-      <form method="post" action="/g/${escapeHtml(token)}/unlock" autocomplete="off">
+      <form method="post" action="/g/${escapeHtml(slug)}/unlock" autocomplete="off">
         <input name="password" type="password" required autofocus />
         <button type="submit">View gallery</button>
       </form>
@@ -91,7 +116,7 @@ const renderGalleryPage = ({ gallery, photos, downloadEnabled, watermarkOverlay,
         <div class="meta">${escapeHtml(shoot)} · ${photos.length} photo${photos.length === 1 ? '' : 's'}</div>
       </div>
       <div class="actions">
-        ${downloadEnabled ? `<a href="/g/${escapeHtml(gallery.token)}/download-all">Download all</a>` : ''}
+        ${downloadEnabled ? `<a href="/g/${escapeHtml(gallery.slug)}/download-all">Download all</a>` : ''}
         ${(products || []).length ? `<button class="ghost" id="openStoreBtn">Order prints</button>` : ''}
       </div>
     </header>
@@ -113,6 +138,7 @@ const renderGalleryPage = ({ gallery, photos, downloadEnabled, watermarkOverlay,
       </div>
       ${photos.length === 0 ? '<div class="empty">No photos in this gallery yet.</div>' : ''}
     </main>
+
     <div class="lb" id="lb" role="dialog" aria-modal="true">
       <button class="close" aria-label="Close">×</button>
       <button class="nav prev" aria-label="Previous">‹</button>
@@ -120,20 +146,57 @@ const renderGalleryPage = ({ gallery, photos, downloadEnabled, watermarkOverlay,
       <button class="nav next" aria-label="Next">›</button>
       <div class="lb-actions" id="lbActions"></div>
     </div>
+
+    <div class="store" id="store" role="dialog" aria-modal="true">
+      <div class="store-card" style="position:relative">
+        <button class="close" id="storeClose" aria-label="Close">×</button>
+        <h2>Order prints</h2>
+        <p class="sub">Choose a print size and we'll handle the rest.</p>
+        <div id="storeErr"></div>
+
+        <div id="storePhotoPick"></div>
+
+        <div class="field">
+          <label>Print</label>
+          <div class="products" id="storeProducts"></div>
+        </div>
+
+        <div style="display:flex;gap:14px;align-items:center;margin-bottom:12px">
+          <div style="flex:0 0 auto">
+            <label style="display:block;font-size:12px;font-weight:600;color:#9a9aa3;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.06em">Quantity</label>
+            <div class="qty">
+              <button type="button" id="qtyMinus">−</button>
+              <span id="qtyVal">1</span>
+              <button type="button" id="qtyPlus">+</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="field">
+          <label>Email (for order confirmation)</label>
+          <input type="email" id="storeEmail" required placeholder="you@example.com" />
+        </div>
+
+        <div class="summary"><span>Subtotal</span><span id="storeTotal">—</span></div>
+
+        <button type="button" class="btn" id="storeCheckout" disabled>Continue to payment →</button>
+      </div>
+    </div>
+
     <footer>Photos are watermarked and shared privately. Please don't redistribute without permission.</footer>
     <script>
       // Deterrents only — honest about this:
-      //  - context menu disabled
-      //  - image drag disabled
-      //  - user-select disabled
+      //  - context menu disabled, image drag disabled, user-select disabled
       // A determined visitor can still screenshot or inspect element.
-      // The burned-in watermark is the real ownership marker.
       document.addEventListener('dragstart', (e) => { if (e.target.tagName === 'IMG') e.preventDefault(); });
+
       const PHOTOS = ${photosJson};
       const PRODUCTS = ${productsJson};
-      const TOKEN = ${JSON.stringify(gallery.token)};
+      const SLUG = ${JSON.stringify(gallery.slug)};
       const DOWNLOAD = ${downloadEnabled ? 'true' : 'false'};
       const CURRENCY = ${JSON.stringify(currency || 'gbp')};
+
+      const fmtMoney = (minor) => (minor / 100).toLocaleString('en-GB', { style: 'currency', currency: CURRENCY.toUpperCase() });
 
       const grid = document.getElementById('grid');
       document.querySelectorAll('.filters button').forEach((btn) => {
@@ -171,13 +234,13 @@ const renderGalleryPage = ({ gallery, photos, downloadEnabled, watermarkOverlay,
         lbActions.innerHTML = '';
         if (DOWNLOAD) {
           const a = document.createElement('a');
-          a.href = '/g/' + TOKEN + '/download/' + p._id;
+          a.href = '/g/' + SLUG + '/download/' + p._id;
           a.textContent = 'Download full size';
           lbActions.appendChild(a);
         }
         if (PRODUCTS.length) {
           const b = document.createElement('button');
-          b.textContent = 'Order print';
+          b.textContent = 'Order print of this photo';
           b.addEventListener('click', () => openStore(p._id));
           lbActions.appendChild(b);
         }
@@ -204,31 +267,97 @@ const renderGalleryPage = ({ gallery, photos, downloadEnabled, watermarkOverlay,
         if (e.key === 'ArrowRight') lb.querySelector('.next').click();
       });
 
-      // Print store
-      async function openStore(photoId) {
+      // ---- Store modal ----
+      const storeEl = document.getElementById('store');
+      const storeErr = document.getElementById('storeErr');
+      const storeProducts = document.getElementById('storeProducts');
+      const storePhotoPick = document.getElementById('storePhotoPick');
+      const storeEmail = document.getElementById('storeEmail');
+      const storeTotal = document.getElementById('storeTotal');
+      const storeCheckout = document.getElementById('storeCheckout');
+      const qtyMinus = document.getElementById('qtyMinus');
+      const qtyPlus = document.getElementById('qtyPlus');
+      const qtyVal = document.getElementById('qtyVal');
+      const storeClose = document.getElementById('storeClose');
+      let storeState = { photoId: null, sku: null, qty: 1 };
+
+      function openStore(photoId) {
         if (!PRODUCTS.length) return;
-        const choices = PRODUCTS.map((p, i) => i + 1 + '. ' + p.name + ' — ' + (p.priceMinor / 100).toFixed(2) + ' ' + CURRENCY.toUpperCase()).join('\\n');
-        const pick = prompt('Choose a print:\\n' + choices, '1');
-        const idx = parseInt(pick, 10) - 1;
-        if (Number.isNaN(idx) || !PRODUCTS[idx]) return;
-        const email = prompt('Your email for order confirmation:');
-        if (!email) return;
+        // Close lightbox if open so the store sits cleanly on top.
+        lb.classList.remove('open');
+        storeState = { photoId: photoId || null, sku: PRODUCTS[0]?.sku || null, qty: 1 };
+        renderStore();
+        storeEl.classList.add('open');
+      }
+
+      function renderStore() {
+        storeErr.innerHTML = '';
+
+        if (storeState.photoId) {
+          const p = PHOTOS.find((x) => x._id === storeState.photoId);
+          storePhotoPick.innerHTML = p
+            ? '<div class="photo-pick"><img src="' + p.url + '" alt="" /><div><div style="font-weight:600;font-size:13px">Print of this photo</div><div style="color:#9a9aa3;font-size:12px">Photo #' + p._id.slice(-6) + '</div></div></div>'
+            : '';
+        } else {
+          storePhotoPick.innerHTML = '<div class="photo-pick" style="color:#9a9aa3;font-size:13px">Open a photo from the gallery to attach it to your order.</div>';
+        }
+
+        storeProducts.innerHTML = PRODUCTS.map((p) =>
+          '<div class="product ' + (storeState.sku === p.sku ? 'selected' : '') + '" data-sku="' + p.sku + '">' +
+            '<div><div class="name">' + p.name + '</div>' +
+              (p.description ? '<div class="desc">' + p.description + '</div>' : '') +
+            '</div>' +
+            '<div class="price">' + fmtMoney(p.priceMinor) + '</div>' +
+          '</div>'
+        ).join('');
+        storeProducts.querySelectorAll('.product').forEach((el) => {
+          el.addEventListener('click', () => {
+            storeState.sku = el.dataset.sku;
+            renderStore();
+          });
+        });
+
+        qtyVal.textContent = storeState.qty;
+        const product = PRODUCTS.find((p) => p.sku === storeState.sku);
+        storeTotal.textContent = product ? fmtMoney(product.priceMinor * storeState.qty) : '—';
+
+        const valid = Boolean(product && storeEmail.value && /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(storeEmail.value));
+        storeCheckout.disabled = !valid;
+      }
+
+      qtyMinus.addEventListener('click', () => { storeState.qty = Math.max(1, storeState.qty - 1); renderStore(); });
+      qtyPlus.addEventListener('click', () => { storeState.qty = Math.min(50, storeState.qty + 1); renderStore(); });
+      storeEmail.addEventListener('input', renderStore);
+      storeClose.addEventListener('click', () => storeEl.classList.remove('open'));
+      storeEl.addEventListener('click', (e) => { if (e.target === storeEl) storeEl.classList.remove('open'); });
+
+      storeCheckout.addEventListener('click', async () => {
+        storeErr.innerHTML = '';
+        storeCheckout.disabled = true;
+        storeCheckout.textContent = 'Creating order…';
         try {
-          const res = await fetch('/g/' + TOKEN + '/checkout', {
+          const res = await fetch('/g/' + SLUG + '/checkout', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              email,
-              items: [{ sku: PRODUCTS[idx].sku, quantity: 1, photoId }],
+              email: storeEmail.value,
+              items: [{ sku: storeState.sku, quantity: storeState.qty, photoId: storeState.photoId || undefined }],
             }),
           });
           const data = await res.json();
-          if (data.url) window.location.href = data.url;
-          else alert(data.message || 'Checkout failed');
+          if (res.ok && data.url) {
+            window.location.href = data.url;
+            return;
+          }
+          storeErr.innerHTML = '<div class="err">' + (data.message || ('Checkout failed (' + res.status + ')')) + '</div>';
         } catch (err) {
-          alert('Checkout failed: ' + err.message);
+          storeErr.innerHTML = '<div class="err">Checkout failed: ' + err.message + '</div>';
+        } finally {
+          storeCheckout.disabled = false;
+          storeCheckout.textContent = 'Continue to payment →';
         }
-      }
+      });
+
       const storeBtn = document.getElementById('openStoreBtn');
       if (storeBtn) storeBtn.addEventListener('click', () => openStore(null));
     </script>`;

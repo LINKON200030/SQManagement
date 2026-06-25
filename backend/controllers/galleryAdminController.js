@@ -3,18 +3,37 @@ const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const Gallery = require('../models/Gallery');
 const GalleryOrder = require('../models/GalleryOrder');
-const { uniqueSlug } = require('../lib/slug');
-const { putObject, deleteObject, galleryPhotoKey } = require('../lib/r2');
+const { generateSlug } = require('../lib/slug');
+const {
+  putObject,
+  deleteObject,
+  getObjectBuffer,
+  getSignedGetUrl,
+  galleryPhotoKey,
+} = require('../lib/r2');
 const { buildWebVariant, normalizeFullVariant } = require('../lib/galleryImage');
 
-const buildShareLink = (token) => {
+const buildShareLink = (slug) => {
   const base = (process.env.PUBLIC_APP_URL || '').replace(/\/$/, '');
-  return base ? `${base}/g/${token}` : `/g/${token}`;
+  return base ? `${base}/g/${slug}` : `/g/${slug}`;
 };
 
 // Trim the noisy fields from admin responses (photo binaries live in R2, not here).
-const adminGalleryView = (g) => {
+// `withPreviews` adds a 10-min signed URL per photo for the admin thumbnail grid.
+const adminGalleryView = async (g, { withPreviews = false } = {}) => {
   const obj = g.toObject ? g.toObject({ virtuals: true }) : g;
+  const photos = await Promise.all(
+    (obj.photos || []).map(async (p) => ({
+      _id: p._id,
+      isHighlight: p.isHighlight,
+      order: p.order,
+      originalName: p.originalName,
+      bytes: p.bytes,
+      previewUrl: withPreviews
+        ? await getSignedGetUrl(p.r2KeyWeb, { expiresIn: 600 }).catch(() => null)
+        : undefined,
+    }))
+  );
   return {
     _id: obj._id,
     clientName: obj.clientName,
@@ -26,14 +45,8 @@ const adminGalleryView = (g) => {
     settings: obj.settings,
     photoCount: (obj.photos || []).length,
     highlightCount: (obj.photos || []).filter((p) => p.isHighlight).length,
-    photos: (obj.photos || []).map((p) => ({
-      _id: p._id,
-      isHighlight: p.isHighlight,
-      order: p.order,
-      originalName: p.originalName,
-      bytes: p.bytes,
-    })),
-    shareLink: buildShareLink(obj.token),
+    photos,
+    shareLink: buildShareLink(obj.slug),
     createdAt: obj.createdAt,
     updatedAt: obj.updatedAt,
   };
@@ -50,7 +63,7 @@ const createGallery = async (req, res) => {
       return res.status(400).json({ message: 'Valid shoot date is required' });
     }
 
-    const slug = await uniqueSlug(Gallery, `${clientName}-${date.toISOString().slice(0, 10)}`);
+    const slug = generateSlug(`${clientName}-${date.toISOString().slice(0, 10)}`);
     const token = crypto.randomBytes(24).toString('hex');
 
     const doc = {
@@ -73,7 +86,7 @@ const createGallery = async (req, res) => {
     }
 
     const gallery = await Gallery.create(doc);
-    res.status(201).json(adminGalleryView(gallery));
+    res.status(201).json(await adminGalleryView(gallery, { withPreviews: true }));
   } catch (err) {
     console.error('createGallery error:', err);
     res.status(400).json({ message: err.message });
@@ -83,7 +96,10 @@ const createGallery = async (req, res) => {
 const listGalleries = async (req, res) => {
   try {
     const galleries = await Gallery.find().sort({ createdAt: -1 });
-    res.json(galleries.map(adminGalleryView));
+    // No previews on the list view — it's a thumbnail dashboard, not the detail.
+    // Saves N*K signed-URL generations on big accounts.
+    const out = await Promise.all(galleries.map((g) => adminGalleryView(g)));
+    res.json(out);
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -93,10 +109,31 @@ const getGallery = async (req, res) => {
   try {
     const g = await Gallery.findById(req.params.id);
     if (!g) return res.status(404).json({ message: 'Gallery not found' });
-    res.json(adminGalleryView(g));
+    res.json(await adminGalleryView(g, { withPreviews: true }));
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
+};
+
+// Re-derive every photo's web variant from its full original. Triggered when
+// the watermark toggle flips so previews actually reflect the new setting,
+// not whatever was burned in at upload time.
+const regenerateWebVariants = async (g) => {
+  const watermarkEnabled = g.settings?.watermarkEnabled !== false;
+  let ok = 0;
+  let failed = 0;
+  for (const photo of g.photos) {
+    try {
+      const fullBuffer = await getObjectBuffer(photo.r2KeyFull);
+      const webBuffer = await buildWebVariant(fullBuffer, { watermarkEnabled });
+      await putObject({ key: photo.r2KeyWeb, body: webBuffer, contentType: 'image/jpeg' });
+      ok += 1;
+    } catch (err) {
+      console.error(`[gallery-regen] photo ${photo._id} failed:`, err.message);
+      failed += 1;
+    }
+  }
+  console.log(`[gallery-regen] gallery=${g._id} watermark=${watermarkEnabled} ok=${ok} failed=${failed}`);
 };
 
 const updateGallery = async (req, res) => {
@@ -122,9 +159,14 @@ const updateGallery = async (req, res) => {
     else if (password && String(password).length >= 4) {
       g.passwordHash = await bcrypt.hash(String(password), 10);
     }
+
+    let watermarkChanged = false;
     if (settings && typeof settings === 'object') {
       if (typeof settings.downloadEnabled === 'boolean') g.settings.downloadEnabled = settings.downloadEnabled;
-      if (typeof settings.watermarkEnabled === 'boolean') g.settings.watermarkEnabled = settings.watermarkEnabled;
+      if (typeof settings.watermarkEnabled === 'boolean' && settings.watermarkEnabled !== g.settings.watermarkEnabled) {
+        g.settings.watermarkEnabled = settings.watermarkEnabled;
+        watermarkChanged = true;
+      }
     }
     // highlights = { [photoId]: boolean } — partial patch.
     if (highlights && typeof highlights === 'object') {
@@ -135,7 +177,17 @@ const updateGallery = async (req, res) => {
     }
 
     await g.save();
-    res.json(adminGalleryView(g));
+
+    if (watermarkChanged && g.photos.length) {
+      // Rebuild web variants from the untouched full originals so the
+      // burned-in watermark actually matches the new setting. Awaited so
+      // the response reflects the new state — caller can then refetch
+      // signed URLs and the UI updates immediately. For large galleries
+      // this can take seconds; cap is the upload cap so it's bounded.
+      await regenerateWebVariants(g);
+    }
+
+    res.json(await adminGalleryView(g, { withPreviews: true }));
   } catch (err) {
     res.status(400).json({ message: err.message });
   }
@@ -231,7 +283,7 @@ const uploadPhotos = async (req, res) => {
       failedCount: failed.length,
       photos: created,
       errors: failed,
-      gallery: adminGalleryView(g),
+      gallery: await adminGalleryView(g, { withPreviews: true }),
     });
   } catch (err) {
     console.error('[gallery-upload] handler error:', err && err.stack ? err.stack : err);
@@ -251,7 +303,7 @@ const deletePhoto = async (req, res) => {
     ]);
     photo.deleteOne();
     await g.save();
-    res.json({ message: 'Photo deleted', gallery: adminGalleryView(g) });
+    res.json({ message: 'Photo deleted', gallery: await adminGalleryView(g, { withPreviews: true }) });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

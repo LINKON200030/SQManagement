@@ -506,16 +506,38 @@ function GalleryDetailModal({ gallery: initial, onClose, onChanged }) {
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
               {gallery.photos.map((p) => (
                 <div key={p._id} className="relative group bg-slate-100 rounded-lg overflow-hidden aspect-square">
-                  <div className="absolute inset-0 flex items-center justify-center text-slate-400">
-                    <ImageIcon className="w-8 h-8" />
-                  </div>
-                  <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent p-2 flex items-center justify-between opacity-0 group-hover:opacity-100 transition-opacity">
+                  {p.previewUrl ? (
+                    <img
+                      src={p.previewUrl}
+                      alt={p.originalName || ''}
+                      loading="lazy"
+                      // Force a fresh fetch after a watermark regen — R2 key stays
+                      // the same but the bytes change, and the signed URL itself
+                      // already varies each request so this is mostly belt-and-braces.
+                      key={p.previewUrl}
+                      className="absolute inset-0 w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="absolute inset-0 flex items-center justify-center text-slate-400">
+                      <ImageIcon className="w-8 h-8" />
+                    </div>
+                  )}
+                  {p.isHighlight && (
+                    <div className="absolute top-1.5 right-1.5">
+                      <Star className="w-4 h-4 fill-current text-yellow-400 drop-shadow" />
+                    </div>
+                  )}
+                  <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-2 flex items-center justify-between opacity-0 group-hover:opacity-100 transition-opacity">
                     <button
                       onClick={() => toggleHighlight(p._id, p.isHighlight)}
                       title={p.isHighlight ? 'Unhighlight' : 'Mark highlight'}
                       className="text-white hover:text-yellow-400"
                     >
-                      {p.isHighlight ? <Star className="w-4 h-4 fill-current text-yellow-400" /> : <StarOff className="w-4 h-4" />}
+                      {p.isHighlight ? (
+                        <Star className="w-4 h-4 fill-current text-yellow-400" />
+                      ) : (
+                        <StarOff className="w-4 h-4" />
+                      )}
                     </button>
                     <button
                       onClick={() => removePhoto(p._id)}
@@ -525,11 +547,6 @@ function GalleryDetailModal({ gallery: initial, onClose, onChanged }) {
                       <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
-                  {p.isHighlight && !('opacity-0' in {}) && (
-                    <div className="absolute top-1.5 right-1.5">
-                      <Star className="w-4 h-4 fill-current text-yellow-400 drop-shadow" />
-                    </div>
-                  )}
                 </div>
               ))}
             </div>
@@ -547,7 +564,7 @@ function GalleryDetailModal({ gallery: initial, onClose, onChanged }) {
           />
           <Toggle
             label="Watermark"
-            description="Burned into the web variant of each photo. Disable only if you re-upload originals."
+            description="Burned into the web preview. Toggling this rebuilds every preview from the untouched original — may take a few seconds for big galleries."
             value={gallery.settings?.watermarkEnabled !== false}
             onChange={(v) => updateSetting('watermarkEnabled', v)}
           />
