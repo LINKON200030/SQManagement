@@ -1,5 +1,7 @@
 const express = require('express');
 const Order = require('../models/Order');
+const GalleryOrder = require('../models/GalleryOrder');
+const PrintProduct = require('../models/PrintProduct');
 const { stripe, deactivatePaymentLink } = require('../lib/stripe');
 
 const router = express.Router();
@@ -23,6 +25,51 @@ const handlePaidOrder = async (orderId, paymentIntentId) => {
   ]);
 
   console.log(`Order ${order.invoiceNumber} marked as Paid (payment_intent ${paymentIntentId})`);
+};
+
+const sendGalleryOrderEmail = async (order) => {
+  // Lightweight outbound: log it, then if SMTP/Resend is configured later this
+  // is the one place to wire it. Keeping it dependency-free for now.
+  console.log(
+    `[gallery-order] paid order ${order._id} for ${order.customerEmail} ` +
+      `(${order.galleryClientName}) total ${(order.totalMinor / 100).toFixed(2)} ${order.currency}`
+  );
+};
+
+const handlePaidGalleryOrder = async (session) => {
+  const order = await GalleryOrder.findOne({ stripeSessionId: session.id });
+  if (!order) {
+    console.warn(`Gallery order not found for session ${session.id}`);
+    return;
+  }
+  if (order.status === 'Paid') return; // idempotent
+
+  order.status = 'Paid';
+  order.paidAt = new Date();
+  order.stripePaymentIntentId = session.payment_intent || '';
+  order.totalMinor = session.amount_total ?? order.totalMinor;
+  order.shippingMinor = session.shipping_cost?.amount_total ?? 0;
+  if (session.shipping_details?.address) {
+    order.shippingAddress = session.shipping_details.address;
+    order.customerName = session.shipping_details.name || order.customerName;
+    order.fulfillment = order.shippingMinor > 0 ? 'delivery' : 'collection';
+  }
+  if (session.customer_details?.email) {
+    order.customerEmail = session.customer_details.email;
+  }
+  await order.save();
+
+  // Prints are made-to-order so we don't touch stock for them.
+  // Physical SKUs ARE inventory-tracked — decrement here.
+  for (const item of order.items) {
+    if (item.kind !== 'physical') continue;
+    await PrintProduct.updateOne(
+      { sku: item.productSku, stockQty: { $ne: null } },
+      { $inc: { stockQty: -item.quantity } }
+    );
+  }
+
+  await sendGalleryOrderEmail(order);
 };
 
 router.post(
@@ -50,8 +97,12 @@ router.post(
     try {
       if (event.type === 'checkout.session.completed') {
         const session = event.data.object;
-        const orderId = session.metadata?.orderId;
-        await handlePaidOrder(orderId, session.payment_intent);
+        if (session.metadata?.source === 'gallery') {
+          await handlePaidGalleryOrder(session);
+        } else {
+          const orderId = session.metadata?.orderId;
+          await handlePaidOrder(orderId, session.payment_intent);
+        }
       } else if (event.type === 'payment_intent.succeeded') {
         const intent = event.data.object;
         const orderId = intent.metadata?.orderId;

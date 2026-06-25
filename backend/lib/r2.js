@@ -1,4 +1,5 @@
 const { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand } = require('@aws-sdk/client-s3');
+const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 const crypto = require('crypto');
 
 const accountId = process.env.R2_ACCOUNT_ID;
@@ -53,4 +54,43 @@ const getObjectBuffer = async (key) => {
   return Buffer.concat(chunks);
 };
 
-module.exports = { uploadInvoicePdf, deleteObject, getObjectBuffer };
+const getObjectStream = async (key) => {
+  const res = await client.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
+  return res.Body;
+};
+
+const putObject = async ({ key, body, contentType }) => {
+  await client.send(
+    new PutObjectCommand({
+      Bucket: bucket,
+      Key: key,
+      Body: body,
+      ContentType: contentType,
+    })
+  );
+  return { key };
+};
+
+const getSignedGetUrl = async (key, { expiresIn = 600, downloadFilename } = {}) => {
+  const cmd = new GetObjectCommand({
+    Bucket: bucket,
+    Key: key,
+    ...(downloadFilename
+      ? { ResponseContentDisposition: `attachment; filename="${downloadFilename.replace(/"/g, '')}"` }
+      : {}),
+  });
+  return getSignedUrl(client, cmd, { expiresIn });
+};
+
+const galleryPhotoKey = ({ galleryId, variant, photoId, ext = 'jpg' }) =>
+  `galleries/${galleryId}/${variant}/${photoId}.${ext}`;
+
+module.exports = {
+  uploadInvoicePdf,
+  deleteObject,
+  getObjectBuffer,
+  getObjectStream,
+  putObject,
+  getSignedGetUrl,
+  galleryPhotoKey,
+};
