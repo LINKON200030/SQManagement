@@ -6,6 +6,15 @@ const api = axios.create({
   baseURL: `${apiBase}/api`,
 });
 
+// Admin endpoints sit behind X-Admin-Secret. Locally the secret can be left
+// blank (the backend opens admin routes in non-production NODE_ENV).
+const adminSecret = import.meta.env.VITE_ADMIN_SECRET || '';
+if (adminSecret) {
+  api.defaults.headers.common['X-Admin-Secret'] = adminSecret;
+}
+
+export const apiBaseUrl = apiBase;
+
 export const orderService = {
   createOrder: (data) => api.post('/orders', data),
   getAllOrders: (filters = {}) => api.get('/orders', { params: filters }),
@@ -63,5 +72,32 @@ export const expenseService = {
 
 export const bundlePdfUrl = (year, month) =>
   `${apiBase}/api/monthly-reports/${year}/${month}/bundle.pdf`;
+
+export const galleryService = {
+  list: () => api.get('/admin/galleries'),
+  get: (id) => api.get(`/admin/galleries/${id}`),
+  create: (data) => api.post('/admin/galleries', data),
+  update: (id, data) => api.patch(`/admin/galleries/${id}`, data),
+  remove: (id) => api.delete(`/admin/galleries/${id}`),
+  uploadPhotos: (id, files, onProgress) => {
+    const fd = new FormData();
+    for (const f of files) fd.append('files', f);
+    return api.post(`/admin/galleries/${id}/photos`, fd, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      onUploadProgress: (e) => {
+        if (onProgress && e.total) onProgress(Math.round((e.loaded / e.total) * 100));
+      },
+    });
+  },
+  deletePhoto: (id, photoId) => api.delete(`/admin/galleries/${id}/photos/${photoId}`),
+  orders: (id) => api.get(`/admin/galleries/${id}/orders`),
+};
+
+export const printProductService = {
+  list: () => api.get('/admin/print-products'),
+  create: (data) => api.post('/admin/print-products', data),
+  update: (id, data) => api.patch(`/admin/print-products/${id}`, data),
+  remove: (id) => api.delete(`/admin/print-products/${id}`),
+};
 
 export default api;
