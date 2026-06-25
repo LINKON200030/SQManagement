@@ -24,22 +24,35 @@ const setPublicHeaders = (res) => {
 
 const isExpired = (g) => g.expiresAt && g.expiresAt.getTime() < Date.now();
 
-const loadGalleryByToken = async (token) => {
-  if (!token || token.length < 24) return null;
-  return Gallery.findOne({ token });
+// Slug shape: <kebab-name>-<12 hex>. Reject obvious garbage early so we don't
+// hit Mongo with a query on every random scanner that finds /g/ in robots.txt.
+const isPlausibleSlug = (s) => typeof s === 'string' && s.length >= 13 && /^[a-z0-9-]+$/.test(s);
+
+// Old links used /g/<48-hex-token>. Look those up by token too so previously
+// shared URLs don't 404 after the slug switch — controllers respond as if
+// the request came in by slug.
+const looksLikeOldToken = (s) => typeof s === 'string' && /^[0-9a-f]{48}$/.test(s);
+
+const loadGalleryBySlug = async (slug) => {
+  if (isPlausibleSlug(slug)) {
+    const bySlug = await Gallery.findOne({ slug });
+    if (bySlug) return bySlug;
+  }
+  if (looksLikeOldToken(slug)) return Gallery.findOne({ token: slug });
+  return null;
 };
 
 const renderGallery = async (req, res) => {
   setPublicHeaders(res);
   res.set('Content-Type', 'text/html; charset=utf-8');
 
-  const gallery = await loadGalleryByToken(req.params.token);
+  const gallery = await loadGalleryBySlug(req.params.slug);
   if (!gallery) return res.status(404).send(renderMessagePage({ title: 'Not found', message: 'This gallery link is invalid.' }));
   if (isExpired(gallery)) {
     return res.status(410).send(renderMessagePage({ title: 'Expired', message: 'This gallery link has expired. Please contact the studio.' }));
   }
   if (gallery.passwordHash && !hasValidCookie(req, gallery._id)) {
-    return res.status(200).send(renderPasswordPage({ token: gallery.token }));
+    return res.status(200).send(renderPasswordPage({ slug: gallery.slug }));
   }
 
   // Generate signed URLs for web variants only. Never expose r2KeyFull keys here.
@@ -65,7 +78,7 @@ const renderGallery = async (req, res) => {
 
   res.send(
     renderGalleryPage({
-      gallery: { token: gallery.token, clientName: gallery.clientName, shootDate: gallery.shootDate },
+      gallery: { slug: gallery.slug, clientName: gallery.clientName, shootDate: gallery.shootDate },
       photos,
       downloadEnabled: Boolean(gallery.settings?.downloadEnabled),
       watermarkOverlay: gallery.settings?.watermarkEnabled !== false,
@@ -79,24 +92,24 @@ const unlockGallery = async (req, res) => {
   setPublicHeaders(res);
   res.set('Content-Type', 'text/html; charset=utf-8');
 
-  const gallery = await loadGalleryByToken(req.params.token);
+  const gallery = await loadGalleryBySlug(req.params.slug);
   if (!gallery) return res.status(404).send(renderMessagePage({ title: 'Not found', message: 'This gallery link is invalid.' }));
   if (isExpired(gallery)) {
     return res.status(410).send(renderMessagePage({ title: 'Expired', message: 'This gallery link has expired.' }));
   }
-  if (!gallery.passwordHash) return res.redirect(`/g/${gallery.token}`);
+  if (!gallery.passwordHash) return res.redirect(`/g/${gallery.slug}`);
 
   const submitted = String(req.body?.password || '');
   const ok = submitted && (await bcrypt.compare(submitted, gallery.passwordHash));
   if (!ok) {
-    return res.status(401).send(renderPasswordPage({ token: gallery.token, error: 'Wrong password — please try again.' }));
+    return res.status(401).send(renderPasswordPage({ slug: gallery.slug, error: 'Wrong password — please try again.' }));
   }
   issueCookie(res, gallery._id);
-  res.redirect(`/g/${gallery.token}`);
+  res.redirect(`/g/${gallery.slug}`);
 };
 
 const requireUnlocked = async (req, res) => {
-  const gallery = await loadGalleryByToken(req.params.token);
+  const gallery = await loadGalleryBySlug(req.params.slug);
   if (!gallery) {
     res.status(404).json({ message: 'Not found' });
     return null;
@@ -241,12 +254,12 @@ const checkout = async (req, res) => {
         },
       },
     ],
-    success_url: `${baseUrl}/g/${gallery.token}?ordered=1`,
-    cancel_url: `${baseUrl}/g/${gallery.token}?cancelled=1`,
+    success_url: `${baseUrl}/g/${gallery.slug}?ordered=1`,
+    cancel_url: `${baseUrl}/g/${gallery.slug}?cancelled=1`,
     metadata: {
       source: 'gallery',
       galleryId: String(gallery._id),
-      galleryToken: gallery.token,
+      gallerySlug: gallery.slug,
     },
     payment_intent_data: {
       metadata: {

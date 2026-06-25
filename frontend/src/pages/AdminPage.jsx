@@ -1,15 +1,17 @@
 import { useState } from 'react';
-import { ShieldCheck, Users2, FileBarChart2, Megaphone, Images } from 'lucide-react';
+import { ShieldCheck, Users2, FileBarChart2, Megaphone, Images, Package } from 'lucide-react';
 import PartnersTab from '../components/admin/PartnersTab';
 import MonthlyReportTab from '../components/admin/MonthlyReportTab';
 import AnnouncementsTab from '../components/admin/AnnouncementsTab';
 import GalleriesTab from '../components/admin/GalleriesTab';
+import PrintProductsTab from '../components/admin/PrintProductsTab';
 
 const TABS = [
   { id: 'partners', label: 'Our Partners', icon: Users2 },
   { id: 'report', label: 'Monthly Report', icon: FileBarChart2 },
   { id: 'announcements', label: 'Announcements', icon: Megaphone },
   { id: 'galleries', label: 'Galleries', icon: Images },
+  { id: 'prints', label: 'Print Catalogue', icon: Package },
 ];
 
 function AdminPage() {
@@ -53,6 +55,7 @@ function AdminPage() {
       {activeTab === 'report' && <MonthlyReportTab />}
       {activeTab === 'announcements' && <AnnouncementsTab />}
       {activeTab === 'galleries' && <GalleriesTab />}
+      {activeTab === 'prints' && <PrintProductsTab />}
     </div>
   );
 }
