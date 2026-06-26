@@ -79,7 +79,9 @@ const layout = ({ title, body, extraHead = '' }) => `<!doctype html>
   .tile.faved .ribbon svg{fill:var(--heart)}
   .tile .star{position:absolute;top:10px;left:10px;color:var(--gold);font-size:16px;text-shadow:0 1px 4px rgba(0,0,0,0.4)}
   .tile.hidden{display:none}
-  .wm-overlay{pointer-events:none;position:absolute;inset:0;background-image:repeating-linear-gradient(-30deg,rgba(0,0,0,0.025) 0 1px,transparent 1px 160px);mix-blend-mode:multiply}
+  /* Note shown above the masonry grid (e.g. when filtering by Favorites). */
+  .grid-note{margin:0 0 16px;padding:12px 16px;background:#fff;border:1px solid var(--line);border-left:3px solid var(--ink);border-radius:4px;color:var(--ink);font-size:13px;font-weight:500}
+  .grid-note .em{font-family:var(--serif);font-style:italic;font-size:15px;color:var(--ink)}
   .empty{color:var(--ink-faint);text-align:center;padding:60px 0;font-size:14px}
 
   /* ---------- PASSWORD ---------- */
@@ -171,7 +173,6 @@ const renderGalleryPage = ({
   photos,
   coverUrl,
   downloadEnabled,
-  watermarkOverlay,
   products,
   currency,
 }) => {
@@ -223,7 +224,10 @@ const renderGalleryPage = ({
     </div>
 
     <main>
-      ${watermarkOverlay ? '<div class="wm-overlay" aria-hidden="true"></div>' : ''}
+      <div class="grid-note" id="favNote" style="display:none">
+        <span class="em">My favourite picture will count as your selected picture.</span>
+        Tap the heart on any photo to add it to your favourites — your photographer will see what you picked.
+      </div>
       <div class="grid" id="grid">
         ${photos
           .map(
@@ -344,6 +348,8 @@ const renderGalleryPage = ({
             (currentFilter === 'favorites' && FAVS.has(t.dataset.id));
           t.classList.toggle('hidden', !show);
         });
+        const favNote = document.getElementById('favNote');
+        if (favNote) favNote.style.display = currentFilter === 'favorites' ? 'block' : 'none';
       }
       document.querySelectorAll('.filters .left button').forEach((btn) => {
         btn.addEventListener('click', () => {

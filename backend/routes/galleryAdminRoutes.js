@@ -15,15 +15,13 @@ const {
 } = require('../controllers/galleryAdminController');
 const printProducts = require('../controllers/printProductController');
 
-// Frontend uploads files in parallel as individual POSTs (1 file each), so
-// peak per-request memory is bounded by one file's buffer + one sharp decode.
-// 25 MB covers straight-out-of-camera JPEGs from pro bodies (Canon R5/Sony A7R)
-// and the per-request memory at concurrency 3 stays well under Render's
-// 512 MB. files: 5 is the soft cap — the frontend sends 1, but allow a small
-// batch if someone POSTs the legacy endpoint directly.
+// Frontend uploads files in parallel as individual POSTs (1 file each).
+// No sharp in the pipeline anymore — the buffer goes straight to R2 — so the
+// only memory consideration is the buffer itself. 40 MB covers straight-out-of-
+// camera JPEGs from pro bodies (Canon R5 ~30 MB, Sony A7R ~25 MB).
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 25 * 1024 * 1024, files: 5 },
+  limits: { fileSize: 40 * 1024 * 1024, files: 5 },
 });
 
 router.use(requireAdmin);
@@ -51,26 +49,14 @@ router.post(
 );
 router.delete('/galleries/:id/photos/:photoId', deletePhoto);
 
-// Diagnostics — quick check that sharp loads and can do an in-memory roundtrip.
-// Useful when "upload hangs" to confirm the native libvips binary is actually
-// loaded on the host (vs the request silently dying mid-decode).
+// Diagnostics — confirms R2 env vars are set on the host (the only thing that
+// can stop an upload now that sharp is out of the pipeline).
 router.get('/diagnostics', async (req, res) => {
   const out = { node: process.version, env: process.env.NODE_ENV || 'unknown' };
   try {
-    const sharp = require('sharp');
-    out.sharp = { version: sharp.versions?.sharp, vips: sharp.versions?.vips, formats: Object.keys(sharp.format || {}) };
-    const buf = await sharp({ create: { width: 16, height: 16, channels: 3, background: { r: 0, g: 0, b: 0 } } })
-      .jpeg()
-      .toBuffer();
-    out.sharpRoundtripBytes = buf.length;
-  } catch (err) {
-    out.sharpError = err.message;
-  }
-  try {
-    const r2 = require('../lib/r2');
     out.r2Configured = Boolean(process.env.R2_BUCKET && process.env.R2_ACCESS_KEY_ID);
     out.r2Bucket = process.env.R2_BUCKET || null;
-    if (typeof r2.galleryPhotoKey === 'function') out.r2Helpers = true;
+    out.r2PublicUrl = process.env.R2_PUBLIC_URL || null;
   } catch (err) {
     out.r2Error = err.message;
   }

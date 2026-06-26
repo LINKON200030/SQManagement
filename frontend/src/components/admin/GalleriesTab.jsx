@@ -193,7 +193,6 @@ function CreateGalleryModal({ onClose, onCreated }) {
     password: '',
     expiresAt: '',
     downloadEnabled: false,
-    watermarkEnabled: true,
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -210,7 +209,6 @@ function CreateGalleryModal({ onClose, onCreated }) {
         expiresAt: form.expiresAt || undefined,
         settings: {
           downloadEnabled: form.downloadEnabled,
-          watermarkEnabled: form.watermarkEnabled,
         },
       });
       onCreated(res.data);
@@ -269,11 +267,6 @@ function CreateGalleryModal({ onClose, onCreated }) {
             value={form.downloadEnabled}
             onChange={(v) => setForm({ ...form, downloadEnabled: v })}
           />
-          <Toggle
-            label="Watermark"
-            value={form.watermarkEnabled}
-            onChange={(v) => setForm({ ...form, watermarkEnabled: v })}
-          />
         </div>
         <div className="flex justify-end gap-2 pt-2">
           <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-100 rounded-lg">
@@ -322,6 +315,14 @@ function GalleryDetailModal({ gallery: initial, onClose, onChanged }) {
       setError(err.response?.data?.message || err.message);
     }
   };
+
+  // The list-view payload doesn't include signed preview URLs (saves a lot of
+  // R2 signing on dashboards with many galleries). When the modal opens we
+  // need the detail fetch so thumbnails actually have URLs to render.
+  useEffect(() => {
+    refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (tab === 'orders') loadOrders();
@@ -533,7 +534,7 @@ function GalleryDetailModal({ gallery: initial, onClose, onChanged }) {
                   : `Uploading… ${uploadPct}%`
                 : 'Drop photos here or click to choose'}
             </p>
-            <p className="text-xs text-slate-500 mt-1">JPEG/PNG · up to {MAX_FILE_MB} MB each · uploaded {UPLOAD_CONCURRENCY} at a time · web variant resized + watermarked server-side</p>
+            <p className="text-xs text-slate-500 mt-1">JPEG/PNG · up to {MAX_FILE_MB} MB each · uploaded {UPLOAD_CONCURRENCY} at a time · originals served as-is</p>
             <input
               ref={fileInputRef}
               type="file"
@@ -604,12 +605,13 @@ function GalleryDetailModal({ gallery: initial, onClose, onChanged }) {
                         <Star className="w-4 h-4 fill-current text-yellow-400 drop-shadow" />
                       </div>
                     )}
-                    <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-2 flex items-center justify-between opacity-0 group-hover:opacity-100 transition-opacity">
+                    {/* Always-visible action bar (works on mobile where hover doesn't). */}
+                    <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/55 to-transparent p-2 flex items-center justify-between">
                       <div className="flex items-center gap-1.5">
                         <button
                           onClick={() => toggleHighlight(p._id, p.isHighlight)}
                           title={p.isHighlight ? 'Unhighlight' : 'Mark highlight'}
-                          className="text-white hover:text-yellow-400"
+                          className="text-white hover:text-yellow-400 p-1"
                         >
                           {p.isHighlight ? (
                             <Star className="w-4 h-4 fill-current text-yellow-400" />
@@ -620,15 +622,15 @@ function GalleryDetailModal({ gallery: initial, onClose, onChanged }) {
                         <button
                           onClick={() => setCover(isCover ? null : p._id)}
                           title={isCover ? 'Remove as cover' : 'Set as cover'}
-                          className={`text-white ${isCover ? 'text-red-400' : 'hover:text-red-400'}`}
+                          className={`p-1 text-white ${isCover ? 'text-red-400' : 'hover:text-red-400'}`}
                         >
                           <Crown className={`w-4 h-4 ${isCover ? 'fill-current' : ''}`} />
                         </button>
                       </div>
                       <button
                         onClick={() => removePhoto(p._id)}
-                        title="Delete"
-                        className="text-white hover:text-red-400"
+                        title="Delete photo"
+                        className="text-white hover:bg-red-600 hover:text-white p-1 rounded"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -645,15 +647,9 @@ function GalleryDetailModal({ gallery: initial, onClose, onChanged }) {
         <div className="space-y-5 max-w-lg">
           <Toggle
             label="Allow downloads"
-            description="Visitors can download full-resolution originals (single or zip-all)."
+            description="Visitors can download originals (single photo or zip-all)."
             value={Boolean(gallery.settings?.downloadEnabled)}
             onChange={(v) => updateSetting('downloadEnabled', v)}
-          />
-          <Toggle
-            label="Watermark"
-            description="Burned into the web preview. Toggling this rebuilds every preview from the untouched original — may take a few seconds for big galleries."
-            value={gallery.settings?.watermarkEnabled !== false}
-            onChange={(v) => updateSetting('watermarkEnabled', v)}
           />
           <Field label="Expires (leave blank for never)">
             <input

@@ -90,7 +90,6 @@ const renderGallery = async (req, res) => {
       photos,
       coverUrl,
       downloadEnabled: Boolean(gallery.settings?.downloadEnabled),
-      watermarkOverlay: gallery.settings?.watermarkEnabled !== false,
       products: safeProducts,
       currency: CURRENCY,
     })

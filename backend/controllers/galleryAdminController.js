@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+const path = require('path');
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const Gallery = require('../models/Gallery');
@@ -7,11 +8,13 @@ const { generateSlug } = require('../lib/slug');
 const {
   putObject,
   deleteObject,
-  getObjectBuffer,
   getSignedGetUrl,
   galleryPhotoKey,
 } = require('../lib/r2');
-const { buildWebVariant, normalizeFullVariant } = require('../lib/galleryImage');
+
+// Admin signed URLs live longer (60 min) so a long editing session doesn't
+// expire mid-scroll. Public links stay short (10 min) where it matters.
+const ADMIN_URL_TTL = 3600;
 
 const buildShareLink = (slug) => {
   const base = (process.env.PUBLIC_APP_URL || '').replace(/\/$/, '');
@@ -30,7 +33,7 @@ const adminGalleryView = async (g, { withPreviews = false } = {}) => {
       originalName: p.originalName,
       bytes: p.bytes,
       previewUrl: withPreviews
-        ? await getSignedGetUrl(p.r2KeyWeb, { expiresIn: 600 }).catch(() => null)
+        ? await getSignedGetUrl(p.r2KeyWeb, { expiresIn: ADMIN_URL_TTL }).catch(() => null)
         : undefined,
     }))
   );
@@ -116,27 +119,6 @@ const getGallery = async (req, res) => {
   }
 };
 
-// Re-derive every photo's web variant from its full original. Triggered when
-// the watermark toggle flips so previews actually reflect the new setting,
-// not whatever was burned in at upload time.
-const regenerateWebVariants = async (g) => {
-  const watermarkEnabled = g.settings?.watermarkEnabled !== false;
-  let ok = 0;
-  let failed = 0;
-  for (const photo of g.photos) {
-    try {
-      const fullBuffer = await getObjectBuffer(photo.r2KeyFull);
-      const webBuffer = await buildWebVariant(fullBuffer, { watermarkEnabled });
-      await putObject({ key: photo.r2KeyWeb, body: webBuffer, contentType: 'image/jpeg' });
-      ok += 1;
-    } catch (err) {
-      console.error(`[gallery-regen] photo ${photo._id} failed:`, err.message);
-      failed += 1;
-    }
-  }
-  console.log(`[gallery-regen] gallery=${g._id} watermark=${watermarkEnabled} ok=${ok} failed=${failed}`);
-};
-
 const updateGallery = async (req, res) => {
   try {
     const g = await Gallery.findById(req.params.id);
@@ -170,13 +152,8 @@ const updateGallery = async (req, res) => {
       g.passwordHash = await bcrypt.hash(String(password), 10);
     }
 
-    let watermarkChanged = false;
     if (settings && typeof settings === 'object') {
       if (typeof settings.downloadEnabled === 'boolean') g.settings.downloadEnabled = settings.downloadEnabled;
-      if (typeof settings.watermarkEnabled === 'boolean' && settings.watermarkEnabled !== g.settings.watermarkEnabled) {
-        g.settings.watermarkEnabled = settings.watermarkEnabled;
-        watermarkChanged = true;
-      }
     }
     // highlights = { [photoId]: boolean } — partial patch.
     if (highlights && typeof highlights === 'object') {
@@ -196,16 +173,6 @@ const updateGallery = async (req, res) => {
     }
 
     await g.save();
-
-    if (watermarkChanged && g.photos.length) {
-      // Rebuild web variants from the untouched full originals so the
-      // burned-in watermark actually matches the new setting. Awaited so
-      // the response reflects the new state — caller can then refetch
-      // signed URLs and the UI updates immediately. For large galleries
-      // this can take seconds; cap is the upload cap so it's bounded.
-      await regenerateWebVariants(g);
-    }
-
     res.json(await adminGalleryView(g, { withPreviews: true }));
   } catch (err) {
     res.status(400).json({ message: err.message });
@@ -218,8 +185,8 @@ const deleteGallery = async (req, res) => {
     if (!g) return res.status(404).json({ message: 'Gallery not found' });
     // Best-effort R2 cleanup — don't block delete on it.
     for (const p of g.photos) {
-      await deleteObject(p.r2KeyWeb).catch(() => {});
-      await deleteObject(p.r2KeyFull).catch(() => {});
+      const keys = new Set([p.r2KeyWeb, p.r2KeyFull].filter(Boolean));
+      for (const k of keys) await deleteObject(k).catch(() => {});
     }
     await g.deleteOne();
     res.json({ message: 'Gallery deleted' });
@@ -241,15 +208,15 @@ const uploadPhotos = async (req, res) => {
       return res.status(400).json({ message: 'No files uploaded (field name: "files")' });
     }
 
-    const watermarkEnabled = g.settings?.watermarkEnabled !== false;
     const created = [];
     const failed = [];
     let order = g.photos.length;
 
-    // Sequential, not parallel — sharp + multer memoryStorage can balloon RAM
-    // fast (each large JPEG decodes to width*height*3 bytes uncompressed).
-    // On Render free tier (512 MB) this is the safest cadence; if you upgrade
-    // you can revisit and add a small concurrency cap.
+    // No sharp, no resize, no watermark — the file goes straight to R2 as the
+    // user uploaded it. One PUT per photo; the same key serves both the admin
+    // preview and the public download. r2KeyWeb and r2KeyFull point at the
+    // same object (we keep both fields so old galleries' two-variant photos
+    // still work without a migration).
     for (const [i, file] of req.files.entries()) {
       const label = `${i + 1}/${fileCount} ${file.originalname || '(no name)'}`;
       const fileStart = Date.now();
@@ -262,29 +229,23 @@ const uploadPhotos = async (req, res) => {
 
       try {
         const photoId = new mongoose.Types.ObjectId();
-        const webKey = galleryPhotoKey({ galleryId: g._id, variant: 'web', photoId, ext: 'jpg' });
-        const fullKey = galleryPhotoKey({ galleryId: g._id, variant: 'full', photoId, ext: 'jpg' });
+        const ext = (path.extname(file.originalname || '').slice(1) || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
+        const key = galleryPhotoKey({ galleryId: g._id, variant: 'original', photoId, ext });
 
-        const webBuffer = await buildWebVariant(file.buffer, { watermarkEnabled });
-        console.log(`[gallery-upload] ${label} sharp:web ok ${webBuffer.length}B`);
-        const fullBuffer = await normalizeFullVariant(file.buffer);
-        console.log(`[gallery-upload] ${label} sharp:full ok ${fullBuffer.length}B`);
-
-        await putObject({ key: webKey, body: webBuffer, contentType: 'image/jpeg' });
-        await putObject({ key: fullKey, body: fullBuffer, contentType: 'image/jpeg' });
-        console.log(`[gallery-upload] ${label} r2 ok`);
+        await putObject({ key, body: file.buffer, contentType: file.mimetype || 'image/jpeg' });
+        console.log(`[gallery-upload] ${label} r2 ok ${file.buffer.length}B`);
 
         g.photos.push({
           _id: photoId,
-          r2KeyWeb: webKey,
-          r2KeyFull: fullKey,
+          r2KeyWeb: key,
+          r2KeyFull: key,
           originalName: file.originalname || '',
-          contentType: 'image/jpeg',
-          bytes: fullBuffer.length,
+          contentType: file.mimetype || 'image/jpeg',
+          bytes: file.buffer.length,
           isHighlight: false,
           order: order++,
         });
-        created.push({ _id: photoId, originalName: file.originalname || '', bytes: fullBuffer.length });
+        created.push({ _id: photoId, originalName: file.originalname || '', bytes: file.buffer.length });
         console.log(`[gallery-upload] ${label} done in ${Date.now() - fileStart}ms`);
       } catch (err) {
         console.error(`[gallery-upload] ${label} FAILED:`, err && err.stack ? err.stack : err);
@@ -316,10 +277,8 @@ const deletePhoto = async (req, res) => {
     if (!g) return res.status(404).json({ message: 'Gallery not found' });
     const photo = g.photos.id(req.params.photoId);
     if (!photo) return res.status(404).json({ message: 'Photo not found' });
-    await Promise.all([
-      deleteObject(photo.r2KeyWeb).catch(() => {}),
-      deleteObject(photo.r2KeyFull).catch(() => {}),
-    ]);
+    const keys = new Set([photo.r2KeyWeb, photo.r2KeyFull].filter(Boolean));
+    await Promise.all([...keys].map((k) => deleteObject(k).catch(() => {})));
     photo.deleteOne();
     await g.save();
     res.json({ message: 'Photo deleted', gallery: await adminGalleryView(g, { withPreviews: true }) });
