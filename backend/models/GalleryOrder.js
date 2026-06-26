@@ -20,6 +20,7 @@ const galleryOrderSchema = new mongoose.Schema(
     customerName: { type: String, default: '', trim: true },
     items: { type: [lineItemSchema], default: [] },
     subtotalMinor: { type: Number, default: 0 },
+    discountMinor: { type: Number, default: 0 },
     shippingMinor: { type: Number, default: 0 },
     totalMinor: { type: Number, default: 0 },
     currency: { type: String, default: 'gbp', lowercase: true },

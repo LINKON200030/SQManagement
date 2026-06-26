@@ -82,6 +82,31 @@ const layout = ({ title, body, extraHead = '' }) => `<!doctype html>
   /* Note shown above the masonry grid (e.g. when filtering by Favorites). */
   .grid-note{margin:0 0 16px;padding:12px 16px;background:#fff;border:1px solid var(--line);border-left:3px solid var(--ink);border-radius:4px;color:var(--ink);font-size:13px;font-weight:500}
   .grid-note .em{font-family:var(--serif);font-style:italic;font-size:15px;color:var(--ink)}
+
+  /* Sale banner shown above the gallery + everywhere prints are offered. */
+  .sale-banner{background:linear-gradient(135deg,#e64a4a 0%,#c43030 100%);color:#fff;padding:14px 22px;text-align:center;font-weight:600;font-size:13px;letter-spacing:0.06em;text-transform:uppercase}
+  .sale-banner strong{font-family:var(--serif);font-style:italic;font-weight:600;font-size:18px;text-transform:none;letter-spacing:0;display:inline-block;margin:0 6px}
+
+  /* Basket count pill on the basket icon */
+  .basket-pill{position:absolute;top:0;right:0;background:#e64a4a;color:#fff;font-size:10px;font-weight:700;min-width:16px;height:16px;border-radius:999px;display:flex;align-items:center;justify-content:center;padding:0 4px;line-height:1}
+  .iconbtn{position:relative}
+
+  /* Basket items inside the modal */
+  .basket-items{display:flex;flex-direction:column;gap:10px;margin-bottom:16px}
+  .basket-row{display:flex;align-items:center;gap:12px;padding:10px;background:#fff;border:1px solid var(--line);border-radius:6px}
+  .basket-row img{width:54px;height:54px;object-fit:cover;border-radius:3px;flex-shrink:0}
+  .basket-row .ph{width:54px;height:54px;border-radius:3px;background:#f0f0ee;display:flex;align-items:center;justify-content:center;color:var(--ink-faint);font-size:11px;flex-shrink:0}
+  .basket-row .info{flex:1;min-width:0}
+  .basket-row .info .nm{font-weight:600;font-size:14px}
+  .basket-row .info .sub{color:var(--ink-soft);font-size:12px;margin-top:2px}
+  .basket-row .price{font-weight:700;font-size:14px;text-align:right;min-width:64px}
+  .basket-row .rm{background:transparent;border:0;color:var(--ink-faint);cursor:pointer;padding:6px;border-radius:4px;flex-shrink:0}
+  .basket-row .rm:hover{color:#e64a4a;background:rgba(230,74,74,0.08)}
+  .basket-totals{padding:14px 16px;background:#fff;border:1px solid var(--line);border-radius:6px;margin-bottom:16px;font-size:13px}
+  .basket-totals .row{display:flex;justify-content:space-between;padding:4px 0}
+  .basket-totals .row.discount{color:#c43030;font-weight:700}
+  .basket-totals .row.total{border-top:1px solid var(--line);margin-top:6px;padding-top:10px;font-weight:700;font-size:16px}
+  .basket-empty{text-align:center;padding:30px 0;color:var(--ink-faint);font-size:14px}
   .empty{color:var(--ink-faint);text-align:center;padding:60px 0;font-size:14px}
 
   /* ---------- PASSWORD ---------- */
@@ -171,6 +196,7 @@ const renderGalleryPage = ({
   downloadEnabled,
   products,
   currency,
+  discountPct = 0,
 }) => {
   const photosJson = JSON.stringify(photos);
   const productsJson = JSON.stringify(products || []);
@@ -197,6 +223,10 @@ const renderGalleryPage = ({
       </div>
     </section>
 
+    ${discountPct > 0 && (products || []).length
+      ? `<div class="sale-banner">Limited time · <strong>${discountPct}% OFF</strong> all prints — applied automatically at checkout</div>`
+      : ''}
+
     <div class="topbar">
       <div class="inner">
         <div class="brand">${escapeHtml(gallery.clientName)}</div>
@@ -204,7 +234,9 @@ const renderGalleryPage = ({
         <div class="toolbar">
           <button class="iconbtn" id="favCountBtn" title="Favorites">${ICON.heart}<span class="count" id="favCount">0</span></button>
           ${downloadEnabled ? `<a class="iconbtn" href="/g/${escapeHtml(gallery.slug)}/download-all" title="Download all">${ICON.download}</a>` : ''}
-          ${(products || []).length ? `<button class="iconbtn" id="openStoreBtn" title="Order prints">${ICON.bag}</button>` : ''}
+          ${(products || []).length
+            ? `<button class="iconbtn" id="openBasketBtn" title="Basket">${ICON.bag}<span class="basket-pill" id="basketPill" style="display:none">0</span></button>`
+            : ''}
           <button class="iconbtn" id="shareBtn" title="Copy share link">${ICON.share}</button>
         </div>
       </div>
@@ -253,11 +285,12 @@ const renderGalleryPage = ({
       <button class="nav next" aria-label="Next">›</button>
     </div>
 
+    <!-- ADD-TO-BASKET modal: open from lightbox "Order print" or basket "Add another" -->
     <div class="store" id="store" role="dialog" aria-modal="true">
       <div class="store-card">
         <button class="close" id="storeClose" aria-label="Close">${ICON.close}</button>
-        <h2>Order prints</h2>
-        <p class="sub">Choose a print size — we make every print to order in studio.</p>
+        <h2>Add print to basket</h2>
+        <p class="sub">${discountPct > 0 ? `<strong style="color:#c43030">${discountPct}% off</strong> applied automatically at checkout.` : 'Choose a print size below.'}</p>
         <div id="storeErr"></div>
         <div id="storePhotoPick"></div>
         <div class="field">
@@ -275,12 +308,30 @@ const renderGalleryPage = ({
             </div>
           </div>
         </div>
-        <div class="field">
-          <label>Email (order confirmation)</label>
-          <input type="email" id="storeEmail" required placeholder="you@example.com" />
+        <div class="summary"><span>Line total</span><span id="storeTotal">—</span></div>
+        <button type="button" class="btn" id="storeAdd">Add to basket</button>
+      </div>
+    </div>
+
+    <!-- BASKET modal: review all items, enter email, checkout once -->
+    <div class="store" id="basket" role="dialog" aria-modal="true">
+      <div class="store-card">
+        <button class="close" id="basketClose" aria-label="Close">${ICON.close}</button>
+        <h2>Your basket</h2>
+        <p class="sub">${discountPct > 0 ? `<strong style="color:#c43030">${discountPct}% off</strong> all prints applied automatically.` : 'Review your items before paying.'}</p>
+        <div id="basketErr"></div>
+        <div id="basketItems" class="basket-items"></div>
+        <div id="basketTotals" class="basket-totals" style="display:none">
+          <div class="row"><span>Subtotal</span><span id="bSubtotal">—</span></div>
+          ${discountPct > 0 ? `<div class="row discount"><span>${discountPct}% discount</span><span id="bDiscount">—</span></div>` : ''}
+          <div class="row" style="color:var(--ink-soft);font-size:12px"><span>Shipping</span><span>Chosen at checkout</span></div>
+          <div class="row total"><span>Total before shipping</span><span id="bTotal">—</span></div>
         </div>
-        <div class="summary"><span>Subtotal</span><span id="storeTotal">—</span></div>
-        <button type="button" class="btn" id="storeCheckout" disabled>Continue to payment</button>
+        <div id="basketEmailField" class="field" style="display:none">
+          <label>Email (order confirmation)</label>
+          <input type="email" id="basketEmail" required placeholder="you@example.com" />
+        </div>
+        <button type="button" class="btn" id="basketCheckout" disabled>Checkout</button>
       </div>
     </div>
 
@@ -429,21 +480,36 @@ const renderGalleryPage = ({
         setTimeout(() => { el.style.opacity = '0'; }, 1600);
       }
 
-      // ----- Store (unchanged shape, light theme) -----
+      // ===== BASKET (persists in localStorage per gallery) =====
+      const BASKET_KEY = 'sqg_basket_' + SLUG;
+      const DISCOUNT_PCT = ${discountPct};
+      const loadBasket = () => { try { return JSON.parse(localStorage.getItem(BASKET_KEY) || '[]'); } catch { return []; } };
+      const saveBasket = (b) => { try { localStorage.setItem(BASKET_KEY, JSON.stringify(b)); } catch {} };
+      let BASKET = loadBasket();
+
+      function refreshBasketPill() {
+        const pill = document.getElementById('basketPill');
+        if (!pill) return;
+        const n = BASKET.reduce((s, it) => s + it.qty, 0);
+        pill.style.display = n > 0 ? 'flex' : 'none';
+        pill.textContent = n;
+      }
+
+      // ----- Add-to-basket modal -----
       const storeEl = document.getElementById('store');
       const storeErr = document.getElementById('storeErr');
       const storeSku = document.getElementById('storeSku');
       const storeProductDesc = document.getElementById('storeProductDesc');
       const storePhotoPick = document.getElementById('storePhotoPick');
-      const storeEmail = document.getElementById('storeEmail');
       const storeTotal = document.getElementById('storeTotal');
-      const storeCheckout = document.getElementById('storeCheckout');
+      const storeAdd = document.getElementById('storeAdd');
       const qtyVal = document.getElementById('qtyVal');
       let storeState = { photoId: null, sku: null, qty: 1 };
 
       function openStore(photoId) {
         if (!PRODUCTS.length) return;
         closeLightbox();
+        closeBasket();
         storeState = { photoId: photoId || null, sku: PRODUCTS[0]?.sku || null, qty: 1 };
         renderStore();
         storeEl.classList.add('open');
@@ -458,10 +524,8 @@ const renderGalleryPage = ({
             ? '<div class="photo-pick"><img src="' + p.url + '" alt="" /><div><div style="font-weight:600;color:var(--ink)">Print of selected photo</div><div>Photo #' + p._id.slice(-6) + '</div></div></div>'
             : '';
         } else {
-          storePhotoPick.innerHTML = '<div class="photo-pick">Open a photo from the gallery first to attach it to your order.</div>';
+          storePhotoPick.innerHTML = '<div class="photo-pick">Open a photo from the gallery first to attach it, or add a generic print.</div>';
         }
-        // Populate the dropdown only when option set changes. Re-populating on
-        // every keystroke would close the native picker on iOS.
         if (storeSku.options.length !== PRODUCTS.length) {
           storeSku.innerHTML = PRODUCTS.map((p) =>
             '<option value="' + p.sku + '">' + p.name + ' — ' + fmtMoney(p.priceMinor) + '</option>'
@@ -471,42 +535,133 @@ const renderGalleryPage = ({
         const sel = PRODUCTS.find((p) => p.sku === storeState.sku);
         storeProductDesc.textContent = sel?.description || '';
         qtyVal.textContent = storeState.qty;
-        const product = PRODUCTS.find((p) => p.sku === storeState.sku);
-        storeTotal.textContent = product ? fmtMoney(product.priceMinor * storeState.qty) : '—';
-        const valid = Boolean(product && storeEmail.value && /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(storeEmail.value));
-        storeCheckout.disabled = !valid;
+        storeTotal.textContent = sel ? fmtMoney(sel.priceMinor * storeState.qty) : '—';
+        storeAdd.disabled = !sel;
       }
       document.getElementById('qtyMinus').addEventListener('click', () => { storeState.qty = Math.max(1, storeState.qty - 1); renderStore(); });
       document.getElementById('qtyPlus').addEventListener('click', () => { storeState.qty = Math.min(50, storeState.qty + 1); renderStore(); });
       storeSku.addEventListener('change', () => { storeState.sku = storeSku.value; renderStore(); });
-      storeEmail.addEventListener('input', renderStore);
       document.getElementById('storeClose').addEventListener('click', closeStore);
       storeEl.addEventListener('click', (e) => { if (e.target === storeEl) closeStore(); });
-      storeCheckout.addEventListener('click', async () => {
-        storeErr.innerHTML = '';
-        storeCheckout.disabled = true;
-        storeCheckout.textContent = 'Creating order…';
+      storeAdd.addEventListener('click', () => {
+        const sel = PRODUCTS.find((p) => p.sku === storeState.sku);
+        if (!sel) return;
+        // Merge with an existing identical line (same sku + photo) to keep
+        // the basket tidy when the user adds the same thing twice.
+        const idx = BASKET.findIndex((it) => it.sku === sel.sku && (it.photoId || null) === (storeState.photoId || null));
+        if (idx >= 0) {
+          BASKET[idx].qty = Math.min(50, BASKET[idx].qty + storeState.qty);
+        } else {
+          BASKET.push({
+            sku: sel.sku, name: sel.name, priceMinor: sel.priceMinor,
+            qty: storeState.qty,
+            photoId: storeState.photoId || null,
+            photoUrl: storeState.photoId ? PHOTOS.find((p) => p._id === storeState.photoId)?.url : null,
+          });
+        }
+        saveBasket(BASKET);
+        refreshBasketPill();
+        flash('Added to basket');
+        closeStore();
+        openBasket();
+      });
+
+      // ----- Basket modal -----
+      const basketEl = document.getElementById('basket');
+      const basketItemsEl = document.getElementById('basketItems');
+      const basketTotalsEl = document.getElementById('basketTotals');
+      const basketEmailField = document.getElementById('basketEmailField');
+      const basketEmail = document.getElementById('basketEmail');
+      const basketCheckout = document.getElementById('basketCheckout');
+      const basketErr = document.getElementById('basketErr');
+
+      function openBasket() {
+        closeLightbox(); closeStore();
+        renderBasket();
+        basketEl.classList.add('open');
+        document.body.style.overflow = 'hidden';
+      }
+      function closeBasket() { basketEl.classList.remove('open'); document.body.style.overflow = ''; }
+      function renderBasket() {
+        basketErr.innerHTML = '';
+        if (!BASKET.length) {
+          basketItemsEl.innerHTML = '<div class="basket-empty">Your basket is empty. Open any photo and tap the bag icon to add a print.</div>';
+          basketTotalsEl.style.display = 'none';
+          basketEmailField.style.display = 'none';
+          basketCheckout.style.display = 'none';
+          return;
+        }
+        basketItemsEl.innerHTML = BASKET.map((it, i) =>
+          '<div class="basket-row">' +
+            (it.photoUrl
+              ? '<img src="' + it.photoUrl + '" alt="" />'
+              : '<div class="ph">no photo</div>') +
+            '<div class="info">' +
+              '<div class="nm">' + it.name + '</div>' +
+              '<div class="sub">' + fmtMoney(it.priceMinor) + ' each' + (it.photoId ? ' · photo #' + it.photoId.slice(-6) : '') + '</div>' +
+              '<div class="qty" style="margin-top:6px"><button type="button" data-act="dec" data-i="' + i + '">−</button><span>' + it.qty + '</span><button type="button" data-act="inc" data-i="' + i + '">+</button></div>' +
+            '</div>' +
+            '<div class="price">' + fmtMoney(it.priceMinor * it.qty) + '</div>' +
+            '<button class="rm" type="button" data-act="rm" data-i="' + i + '" aria-label="Remove">×</button>' +
+          '</div>'
+        ).join('');
+        const subtotal = BASKET.reduce((s, it) => s + it.priceMinor * it.qty, 0);
+        const discount = Math.round(subtotal * DISCOUNT_PCT / 100);
+        document.getElementById('bSubtotal').textContent = fmtMoney(subtotal);
+        const bDisc = document.getElementById('bDiscount');
+        if (bDisc) bDisc.textContent = '−' + fmtMoney(discount);
+        document.getElementById('bTotal').textContent = fmtMoney(subtotal - discount);
+        basketTotalsEl.style.display = 'block';
+        basketEmailField.style.display = 'block';
+        basketCheckout.style.display = 'block';
+        const validEmail = basketEmail.value && /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(basketEmail.value);
+        basketCheckout.disabled = !validEmail;
+        basketCheckout.textContent = 'Checkout · ' + fmtMoney(subtotal - discount);
+      }
+      basketItemsEl.addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-act]');
+        if (!btn) return;
+        const i = Number(btn.dataset.i);
+        if (btn.dataset.act === 'inc') BASKET[i].qty = Math.min(50, BASKET[i].qty + 1);
+        else if (btn.dataset.act === 'dec') BASKET[i].qty = Math.max(1, BASKET[i].qty - 1);
+        else if (btn.dataset.act === 'rm') BASKET.splice(i, 1);
+        saveBasket(BASKET);
+        refreshBasketPill();
+        renderBasket();
+      });
+      basketEmail.addEventListener('input', renderBasket);
+      document.getElementById('basketClose').addEventListener('click', closeBasket);
+      basketEl.addEventListener('click', (e) => { if (e.target === basketEl) closeBasket(); });
+      basketCheckout.addEventListener('click', async () => {
+        basketErr.innerHTML = '';
+        basketCheckout.disabled = true;
+        basketCheckout.textContent = 'Creating order…';
         try {
           const res = await fetch('/g/' + SLUG + '/checkout', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              email: storeEmail.value,
-              items: [{ sku: storeState.sku, quantity: storeState.qty, photoId: storeState.photoId || undefined }],
+              email: basketEmail.value,
+              items: BASKET.map((it) => ({ sku: it.sku, quantity: it.qty, photoId: it.photoId || undefined })),
             }),
           });
           const data = await res.json();
-          if (res.ok && data.url) { window.location.href = data.url; return; }
-          storeErr.innerHTML = '<div class="err">' + (data.message || ('Checkout failed (' + res.status + ')')) + '</div>';
+          if (res.ok && data.url) {
+            // Clear basket — Stripe will redirect back to the gallery with ?ordered=1.
+            BASKET = [];
+            saveBasket(BASKET);
+            window.location.href = data.url;
+            return;
+          }
+          basketErr.innerHTML = '<div class="err">' + (data.message || ('Checkout failed (' + res.status + ')')) + '</div>';
         } catch (err) {
-          storeErr.innerHTML = '<div class="err">Checkout failed: ' + err.message + '</div>';
+          basketErr.innerHTML = '<div class="err">Checkout failed: ' + err.message + '</div>';
         } finally {
-          storeCheckout.disabled = false;
-          storeCheckout.textContent = 'Continue to payment';
+          renderBasket();
         }
       });
-      const openStoreBtn = document.getElementById('openStoreBtn');
-      if (openStoreBtn) openStoreBtn.addEventListener('click', () => openStore(null));
+      document.getElementById('openBasketBtn')?.addEventListener('click', openBasket);
+      refreshBasketPill();
 
       // Initial paint
       refreshFavUi();

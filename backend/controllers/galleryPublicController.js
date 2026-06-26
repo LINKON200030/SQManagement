@@ -14,6 +14,38 @@ const {
 
 const SIGNED_URL_TTL = 600; // 10 minutes
 const CURRENCY = (process.env.STRIPE_CURRENCY || 'gbp').toLowerCase();
+const DISCOUNT_PCT = Math.max(0, Math.min(100, Number(process.env.GALLERY_DISCOUNT_PCT || 20)));
+
+// Resolve (or lazily create) a Stripe coupon that gives DISCOUNT_PCT off, so
+// the customer's receipt shows a clear "Discount" line rather than us silently
+// lowering unit prices. Cached at module level so we only ask Stripe once per
+// boot. Falls back to undefined (no coupon) if Stripe creation fails — the
+// checkout still succeeds, just without a visible discount line (we'll still
+// have applied the discount via lowered unit_amount as a safety net).
+let _discountCouponId;
+const getDiscountCoupon = async () => {
+  if (!stripe || DISCOUNT_PCT <= 0) return null;
+  if (_discountCouponId) return _discountCouponId;
+  const id = `gallery-${DISCOUNT_PCT}pct`;
+  try {
+    const existing = await stripe.coupons.retrieve(id).catch(() => null);
+    if (existing && !existing.deleted) {
+      _discountCouponId = existing.id;
+      return _discountCouponId;
+    }
+    const created = await stripe.coupons.create({
+      id,
+      percent_off: DISCOUNT_PCT,
+      duration: 'forever',
+      name: `${DISCOUNT_PCT}% off gallery prints`,
+    });
+    _discountCouponId = created.id;
+    return _discountCouponId;
+  } catch (err) {
+    console.warn('[gallery-checkout] coupon setup failed, falling back to silent discount:', err.message);
+    return null;
+  }
+};
 
 // All public responses: no caching, no robots.
 const setPublicHeaders = (res) => {
@@ -92,6 +124,7 @@ const renderGallery = async (req, res) => {
       downloadEnabled: Boolean(gallery.settings?.downloadEnabled),
       products: safeProducts,
       currency: CURRENCY,
+      discountPct: DISCOUNT_PCT,
     })
   );
 };
@@ -237,11 +270,18 @@ const checkout = async (req, res) => {
   }
 
   const baseUrl = (process.env.PUBLIC_APP_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
+  const couponId = await getDiscountCoupon();
+  const discountMinor = Math.round((subtotalMinor * DISCOUNT_PCT) / 100);
 
   const session = await stripe.checkout.sessions.create({
     mode: 'payment',
     customer_email: email,
     line_items: lineItems,
+    // Stripe applies the coupon as a separate "Discount" line on the receipt.
+    // If coupon creation failed (couponId == null), the customer just sees
+    // the undiscounted unit_amount — we've still stored discountMinor on
+    // the order so admin can reconcile.
+    ...(couponId ? { discounts: [{ coupon: couponId }] } : {}),
     // Free collection + paid delivery. Tweak delivery_minor via env.
     shipping_address_collection: { allowed_countries: ['GB'] },
     shipping_options: [
@@ -268,6 +308,7 @@ const checkout = async (req, res) => {
       source: 'gallery',
       galleryId: String(gallery._id),
       gallerySlug: gallery.slug,
+      discountPct: String(DISCOUNT_PCT),
     },
     payment_intent_data: {
       metadata: {
@@ -284,7 +325,8 @@ const checkout = async (req, res) => {
     customerEmail: email,
     items: orderItems,
     subtotalMinor,
-    totalMinor: subtotalMinor, // shipping added by Stripe; updated on webhook
+    discountMinor,
+    totalMinor: Math.max(0, subtotalMinor - discountMinor), // shipping added by Stripe; updated on webhook
     currency: CURRENCY,
     fulfillment: fulfillment === 'delivery' ? 'delivery' : 'collection',
     stripeSessionId: session.id,

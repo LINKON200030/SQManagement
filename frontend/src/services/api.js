@@ -101,6 +101,7 @@ export const printProductService = {
   create: (data) => api.post('/admin/print-products', data),
   update: (id, data) => api.patch(`/admin/print-products/${id}`, data),
   remove: (id) => api.delete(`/admin/print-products/${id}`),
+  seedDefaults: () => api.post('/admin/print-products/seed-defaults'),
 };
 
 export default api;

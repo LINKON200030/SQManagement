@@ -5,6 +5,7 @@ import AllOrdersPage from './pages/AllOrdersPage';
 import CreateOrderPage from './pages/CreateOrderPage';
 import CustomersPage from './pages/CustomersPage';
 import AdminPage from './pages/AdminPage';
+import GalleriesPage from './pages/GalleriesPage';
 import KnowledgeHubPage from './pages/KnowledgeHubPage';
 import InvoicePage from './pages/InvoicePage';
 
@@ -19,6 +20,7 @@ function App() {
           <Route path="/orders" element={<AllOrdersPage />} />
           <Route path="/orders/new" element={<CreateOrderPage />} />
           <Route path="/admin" element={<AdminPage />} />
+          <Route path="/galleries" element={<GalleriesPage />} />
           <Route path="/knowledge" element={<KnowledgeHubPage />} />
         </Route>
       </Routes>

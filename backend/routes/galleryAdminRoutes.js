@@ -69,6 +69,7 @@ router.get('/galleries/:id/orders', listGalleryOrders);
 // Print catalogue
 router.get('/print-products', printProducts.list);
 router.post('/print-products', printProducts.create);
+router.post('/print-products/seed-defaults', printProducts.seedDefaults);
 router.patch('/print-products/:id', printProducts.update);
 router.delete('/print-products/:id', printProducts.remove);
 
