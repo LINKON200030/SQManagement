@@ -56,16 +56,24 @@ const renderGallery = async (req, res) => {
   }
 
   // Generate signed URLs for web variants only. Never expose r2KeyFull keys here.
+  const ordered = gallery.photos.slice().sort((a, b) => a.order - b.order);
   const photos = await Promise.all(
-    gallery.photos
-      .slice()
-      .sort((a, b) => a.order - b.order)
-      .map(async (p) => ({
-        _id: String(p._id),
-        url: await getSignedGetUrl(p.r2KeyWeb, { expiresIn: SIGNED_URL_TTL }),
-        isHighlight: Boolean(p.isHighlight),
-      }))
+    ordered.map(async (p) => ({
+      _id: String(p._id),
+      url: await getSignedGetUrl(p.r2KeyWeb, { expiresIn: SIGNED_URL_TTL }),
+      isHighlight: Boolean(p.isHighlight),
+    }))
   );
+
+  // Cover defaults to whichever photo the admin picked, or the first one.
+  let coverUrl = null;
+  if (ordered.length) {
+    const explicit = gallery.coverPhotoId
+      ? ordered.find((p) => String(p._id) === String(gallery.coverPhotoId))
+      : null;
+    const coverPhoto = explicit || ordered[0];
+    coverUrl = await getSignedGetUrl(coverPhoto.r2KeyWeb, { expiresIn: SIGNED_URL_TTL });
+  }
 
   const products = await PrintProduct.find({ active: true }).sort({ sortOrder: 1, name: 1 }).lean();
   const safeProducts = products.map((p) => ({
@@ -80,6 +88,7 @@ const renderGallery = async (req, res) => {
     renderGalleryPage({
       gallery: { slug: gallery.slug, clientName: gallery.clientName, shootDate: gallery.shootDate },
       photos,
+      coverUrl,
       downloadEnabled: Boolean(gallery.settings?.downloadEnabled),
       watermarkOverlay: gallery.settings?.watermarkEnabled !== false,
       products: safeProducts,

@@ -42,6 +42,7 @@ const adminGalleryView = async (g, { withPreviews = false } = {}) => {
     token: obj.token,
     hasPassword: Boolean(obj.passwordHash),
     expiresAt: obj.expiresAt,
+    coverPhotoId: obj.coverPhotoId || null,
     settings: obj.settings,
     photoCount: (obj.photos || []).length,
     highlightCount: (obj.photos || []).filter((p) => p.isHighlight).length,
@@ -141,7 +142,16 @@ const updateGallery = async (req, res) => {
     const g = await Gallery.findById(req.params.id);
     if (!g) return res.status(404).json({ message: 'Gallery not found' });
 
-    const { clientName, shootDate, expiresAt, password, clearPassword, settings, highlights } = req.body || {};
+    const {
+      clientName,
+      shootDate,
+      expiresAt,
+      password,
+      clearPassword,
+      settings,
+      highlights,
+      coverPhotoId,
+    } = req.body || {};
 
     if (clientName !== undefined) g.clientName = String(clientName).trim();
     if (shootDate !== undefined) {
@@ -173,6 +183,15 @@ const updateGallery = async (req, res) => {
       for (const photo of g.photos) {
         const id = String(photo._id);
         if (id in highlights) photo.isHighlight = Boolean(highlights[id]);
+      }
+    }
+    if (coverPhotoId !== undefined) {
+      if (coverPhotoId === null || coverPhotoId === '') {
+        g.coverPhotoId = null;
+      } else if (g.photos.id(coverPhotoId)) {
+        g.coverPhotoId = coverPhotoId;
+      } else {
+        return res.status(400).json({ message: 'coverPhotoId does not exist in this gallery' });
       }
     }
 
