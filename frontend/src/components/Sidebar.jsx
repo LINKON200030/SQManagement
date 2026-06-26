@@ -7,6 +7,7 @@ import {
   ShieldCheck,
   BookOpen,
   Camera,
+  Images,
 } from 'lucide-react';
 
 const NAV_SECTIONS = [
@@ -17,6 +18,7 @@ const NAV_SECTIONS = [
       { to: '/customers', label: 'Customers', icon: Users },
       { to: '/orders', label: 'All Orders', icon: ShoppingBag },
       { to: '/orders/new', label: 'Create Order', icon: PlusCircle },
+      { to: '/galleries', label: 'Create Gallery', icon: Images },
     ],
   },
   {

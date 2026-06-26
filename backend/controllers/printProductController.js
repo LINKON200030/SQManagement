@@ -1,4 +1,5 @@
 const PrintProduct = require('../models/PrintProduct');
+const { DEFAULT_CATALOGUE } = require('../lib/defaultCatalogue');
 
 const list = async (req, res) => {
   try {
@@ -41,4 +42,25 @@ const remove = async (req, res) => {
   }
 };
 
-module.exports = { list, create, update, remove };
+// One-click seed of the studio's full printings catalogue. Idempotent: skips
+// any SKU that's already in the DB so re-running won't duplicate or overwrite
+// an admin-edited price.
+const seedDefaults = async (req, res) => {
+  try {
+    const existingSkus = new Set(
+      (await PrintProduct.find({ sku: { $in: DEFAULT_CATALOGUE.map((p) => p.sku) } }, 'sku').lean())
+        .map((p) => p.sku)
+    );
+    const toInsert = DEFAULT_CATALOGUE.filter((p) => !existingSkus.has(p.sku));
+    if (toInsert.length) await PrintProduct.insertMany(toInsert);
+    res.json({
+      created: toInsert.length,
+      skipped: DEFAULT_CATALOGUE.length - toInsert.length,
+      total: await PrintProduct.countDocuments(),
+    });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+module.exports = { list, create, update, remove, seedDefaults };

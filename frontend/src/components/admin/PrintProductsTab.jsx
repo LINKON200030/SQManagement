@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Plus, Pencil, Trash2, Package, AlertTriangle, X, Check } from 'lucide-react';
+import { Plus, Pencil, Trash2, Package, AlertTriangle, X, Check, Download } from 'lucide-react';
 import { printProductService } from '../../services/api';
 
 const EMPTY = {
@@ -24,6 +24,8 @@ function PrintProductsTab() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editTarget, setEditTarget] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
+  const [seeding, setSeeding] = useState(false);
+  const [seedMsg, setSeedMsg] = useState('');
 
   const load = async () => {
     setLoading(true);
@@ -41,6 +43,21 @@ function PrintProductsTab() {
   useEffect(() => {
     load();
   }, []);
+
+  const handleSeed = async () => {
+    setSeeding(true);
+    setSeedMsg('');
+    setError('');
+    try {
+      const res = await printProductService.seedDefaults();
+      setSeedMsg(`Loaded ${res.data.created} new product${res.data.created === 1 ? '' : 's'} (${res.data.skipped} already existed)`);
+      load();
+    } catch (err) {
+      setError(err.response?.data?.message || err.message);
+    } finally {
+      setSeeding(false);
+    }
+  };
 
   const handleDelete = async (id) => {
     if (confirmDelete !== id) {
@@ -66,17 +83,35 @@ function PrintProductsTab() {
             ignores any client-supplied amount.
           </p>
         </div>
-        <button
-          onClick={() => {
-            setEditTarget(null);
-            setModalOpen(true);
-          }}
-          className="inline-flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white text-sm font-bold px-4 py-2.5 rounded-lg shadow-md shadow-red-900/20 transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          Add Product
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleSeed}
+            disabled={seeding}
+            className="inline-flex items-center gap-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-bold px-4 py-2.5 rounded-lg transition-colors disabled:opacity-50"
+            title="Load every product from surreyquaysphotostudio.com/printings (skips any SKU you already have)"
+          >
+            <Download className="w-4 h-4" />
+            {seeding ? 'Loading…' : 'Load default catalogue'}
+          </button>
+          <button
+            onClick={() => {
+              setEditTarget(null);
+              setModalOpen(true);
+            }}
+            className="inline-flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white text-sm font-bold px-4 py-2.5 rounded-lg shadow-md shadow-red-900/20 transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            Add Product
+          </button>
+        </div>
       </div>
+
+      {seedMsg && (
+        <div className="mb-4 flex items-center gap-2 p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-emerald-700 text-sm">
+          <Check className="w-4 h-4" />
+          {seedMsg}
+        </div>
+      )}
 
       {error && (
         <div className="mb-4 flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
