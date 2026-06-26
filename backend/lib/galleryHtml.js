@@ -117,12 +117,8 @@ const layout = ({ title, body, extraHead = '' }) => `<!doctype html>
   .field{margin-bottom:14px}
   .field label{display:block;font-size:11px;font-weight:600;color:var(--ink-soft);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.12em}
   .field input{width:100%;padding:11px 13px;background:#fff;border:1px solid var(--line);border-radius:4px;color:var(--ink);font-size:14px;font-family:inherit}
-  .products{display:grid;grid-template-columns:1fr;gap:8px;margin-bottom:6px}
-  .product{display:flex;align-items:center;gap:12px;padding:14px 16px;background:#fff;border:1px solid var(--line);border-radius:6px;cursor:pointer}
-  .product.selected{border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink)}
-  .product .name{font-weight:600;font-size:14px}
-  .product .desc{color:var(--ink-soft);font-size:12px;margin-top:2px}
-  .product .price{margin-left:auto;font-weight:700;font-size:15px}
+  .store-select{width:100%;padding:11px 13px;background:#fff;border:1px solid var(--line);border-radius:4px;color:var(--ink);font-size:14px;font-family:inherit;appearance:none;-webkit-appearance:none;cursor:pointer;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%231c1c1f' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>");background-repeat:no-repeat;background-position:right 12px center;padding-right:36px}
+  .store-product-desc{margin-top:8px;color:var(--ink-soft);font-size:13px;line-height:1.4;min-height:18px}
   .qty{display:flex;align-items:center;gap:8px}
   .qty button{width:32px;height:32px;border:1px solid var(--line);background:#fff;border-radius:4px;cursor:pointer;font-size:16px}
   .qty span{min-width:28px;text-align:center;font-weight:600}
@@ -265,8 +261,9 @@ const renderGalleryPage = ({
         <div id="storeErr"></div>
         <div id="storePhotoPick"></div>
         <div class="field">
-          <label>Print</label>
-          <div class="products" id="storeProducts"></div>
+          <label>Print size</label>
+          <select id="storeSku" class="store-select"></select>
+          <div id="storeProductDesc" class="store-product-desc"></div>
         </div>
         <div style="display:flex;gap:14px;align-items:center;margin-bottom:14px">
           <div>
@@ -435,7 +432,8 @@ const renderGalleryPage = ({
       // ----- Store (unchanged shape, light theme) -----
       const storeEl = document.getElementById('store');
       const storeErr = document.getElementById('storeErr');
-      const storeProducts = document.getElementById('storeProducts');
+      const storeSku = document.getElementById('storeSku');
+      const storeProductDesc = document.getElementById('storeProductDesc');
       const storePhotoPick = document.getElementById('storePhotoPick');
       const storeEmail = document.getElementById('storeEmail');
       const storeTotal = document.getElementById('storeTotal');
@@ -462,17 +460,16 @@ const renderGalleryPage = ({
         } else {
           storePhotoPick.innerHTML = '<div class="photo-pick">Open a photo from the gallery first to attach it to your order.</div>';
         }
-        storeProducts.innerHTML = PRODUCTS.map((p) =>
-          '<div class="product ' + (storeState.sku === p.sku ? 'selected' : '') + '" data-sku="' + p.sku + '">' +
-            '<div><div class="name">' + p.name + '</div>' +
-              (p.description ? '<div class="desc">' + p.description + '</div>' : '') +
-            '</div>' +
-            '<div class="price">' + fmtMoney(p.priceMinor) + '</div>' +
-          '</div>'
-        ).join('');
-        storeProducts.querySelectorAll('.product').forEach((el) => {
-          el.addEventListener('click', () => { storeState.sku = el.dataset.sku; renderStore(); });
-        });
+        // Populate the dropdown only when option set changes. Re-populating on
+        // every keystroke would close the native picker on iOS.
+        if (storeSku.options.length !== PRODUCTS.length) {
+          storeSku.innerHTML = PRODUCTS.map((p) =>
+            '<option value="' + p.sku + '">' + p.name + ' — ' + fmtMoney(p.priceMinor) + '</option>'
+          ).join('');
+        }
+        if (storeSku.value !== storeState.sku) storeSku.value = storeState.sku || '';
+        const sel = PRODUCTS.find((p) => p.sku === storeState.sku);
+        storeProductDesc.textContent = sel?.description || '';
         qtyVal.textContent = storeState.qty;
         const product = PRODUCTS.find((p) => p.sku === storeState.sku);
         storeTotal.textContent = product ? fmtMoney(product.priceMinor * storeState.qty) : '—';
@@ -481,6 +478,7 @@ const renderGalleryPage = ({
       }
       document.getElementById('qtyMinus').addEventListener('click', () => { storeState.qty = Math.max(1, storeState.qty - 1); renderStore(); });
       document.getElementById('qtyPlus').addEventListener('click', () => { storeState.qty = Math.min(50, storeState.qty + 1); renderStore(); });
+      storeSku.addEventListener('change', () => { storeState.sku = storeSku.value; renderStore(); });
       storeEmail.addEventListener('input', renderStore);
       document.getElementById('storeClose').addEventListener('click', closeStore);
       storeEl.addEventListener('click', (e) => { if (e.target === storeEl) closeStore(); });

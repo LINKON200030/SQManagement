@@ -291,7 +291,32 @@ const listGalleryOrders = async (req, res) => {
   try {
     const g = await Gallery.findById(req.params.id);
     if (!g) return res.status(404).json({ message: 'Gallery not found' });
-    const orders = await GalleryOrder.find({ gallery: g._id }).sort({ createdAt: -1 });
+    const orders = await GalleryOrder.find({ gallery: g._id }).sort({ createdAt: -1 }).lean();
+
+    // Build a single map photoId -> r2Key so we sign each photo at most once
+    // even if it appears across multiple orders.
+    const photoMap = new Map(g.photos.map((p) => [String(p._id), p.r2KeyWeb]));
+    const urlCache = new Map();
+    const signFor = async (photoId) => {
+      const id = String(photoId);
+      if (urlCache.has(id)) return urlCache.get(id);
+      const key = photoMap.get(id);
+      if (!key) {
+        urlCache.set(id, null);
+        return null;
+      }
+      const url = await getSignedGetUrl(key, { expiresIn: ADMIN_URL_TTL }).catch(() => null);
+      urlCache.set(id, url);
+      return url;
+    };
+
+    for (const order of orders) {
+      for (const item of order.items) {
+        if (item.photoId) {
+          item.photoPreviewUrl = await signFor(item.photoId);
+        }
+      }
+    }
     res.json(orders);
   } catch (err) {
     res.status(500).json({ message: err.message });

@@ -760,7 +760,45 @@ function GalleryDetailModal({ gallery: initial, onClose, onChanged }) {
                         <div className="text-xs text-slate-500">{o.customerEmail}</div>
                       </td>
                       <td className="px-3 py-2 text-xs text-slate-700">
-                        {o.items.map((i) => `${i.quantity}× ${i.productName}`).join(', ')}
+                        <div className="space-y-1.5">
+                          {o.items.map((i, idx) => (
+                            <div key={idx} className="flex items-center gap-2">
+                              {i.photoPreviewUrl ? (
+                                <a
+                                  href={i.photoPreviewUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  title="Open full photo"
+                                  className="shrink-0"
+                                >
+                                  <img
+                                    src={i.photoPreviewUrl}
+                                    alt=""
+                                    className="w-12 h-12 object-cover rounded border border-slate-200 hover:border-red-400 transition-colors"
+                                  />
+                                </a>
+                              ) : i.photoId ? (
+                                <div className="w-12 h-12 rounded border border-dashed border-slate-300 flex items-center justify-center text-[10px] text-slate-400">
+                                  deleted
+                                </div>
+                              ) : (
+                                <div className="w-12 h-12 rounded border border-dashed border-slate-200 flex items-center justify-center text-[10px] text-slate-400">
+                                  no photo
+                                </div>
+                              )}
+                              <div className="min-w-0">
+                                <div className="font-bold text-black">
+                                  {i.quantity}× {i.productName}
+                                </div>
+                                {i.photoId && (
+                                  <div className="font-mono text-[10px] text-slate-400">
+                                    #{String(i.photoId).slice(-6)}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
                       </td>
                       <td className="px-3 py-2 text-right font-bold">{fmtMoney(o.totalMinor, o.currency)}</td>
                       <td className="px-3 py-2">
