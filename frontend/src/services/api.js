@@ -79,9 +79,12 @@ export const galleryService = {
   create: (data) => api.post('/admin/galleries', data),
   update: (id, data) => api.patch(`/admin/galleries/${id}`, data),
   remove: (id) => api.delete(`/admin/galleries/${id}`),
-  uploadPhotos: (id, files, onProgress) => {
+  // Upload a single file. Used by the parallel-upload pipeline in the UI so
+  // network + server-side sharp overlap across files instead of being one big
+  // serial request.
+  uploadPhoto: (id, file, onProgress) => {
     const fd = new FormData();
-    for (const f of files) fd.append('files', f);
+    fd.append('files', file);
     return api.post(`/admin/galleries/${id}/photos`, fd, {
       headers: { 'Content-Type': 'multipart/form-data' },
       onUploadProgress: (e) => {
