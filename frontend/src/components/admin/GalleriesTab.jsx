@@ -16,6 +16,7 @@ import {
   ChevronLeft,
   ChevronRight,
   ShoppingBag,
+  Crown,
 } from 'lucide-react';
 import { galleryService, apiBaseUrl } from '../../services/api';
 
@@ -352,6 +353,16 @@ function GalleryDetailModal({ gallery: initial, onClose, onChanged }) {
     }
   };
 
+  const setCover = async (photoId) => {
+    try {
+      await galleryService.update(gallery._id, { coverPhotoId: photoId });
+      await refresh();
+      onChanged();
+    } catch (err) {
+      setError(err.response?.data?.message || err.message);
+    }
+  };
+
   const toggleHighlight = async (photoId, current) => {
     try {
       await galleryService.update(gallery._id, { highlights: { [photoId]: !current } });
@@ -504,51 +515,76 @@ function GalleryDetailModal({ gallery: initial, onClose, onChanged }) {
             <div className="text-center text-sm text-slate-400 py-8">No photos uploaded yet.</div>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
-              {gallery.photos.map((p) => (
-                <div key={p._id} className="relative group bg-slate-100 rounded-lg overflow-hidden aspect-square">
-                  {p.previewUrl ? (
-                    <img
-                      src={p.previewUrl}
-                      alt={p.originalName || ''}
-                      loading="lazy"
-                      // Force a fresh fetch after a watermark regen — R2 key stays
-                      // the same but the bytes change, and the signed URL itself
-                      // already varies each request so this is mostly belt-and-braces.
-                      key={p.previewUrl}
-                      className="absolute inset-0 w-full h-full object-cover"
-                    />
-                  ) : (
-                    <div className="absolute inset-0 flex items-center justify-center text-slate-400">
-                      <ImageIcon className="w-8 h-8" />
-                    </div>
-                  )}
-                  {p.isHighlight && (
-                    <div className="absolute top-1.5 right-1.5">
-                      <Star className="w-4 h-4 fill-current text-yellow-400 drop-shadow" />
-                    </div>
-                  )}
-                  <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-2 flex items-center justify-between opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button
-                      onClick={() => toggleHighlight(p._id, p.isHighlight)}
-                      title={p.isHighlight ? 'Unhighlight' : 'Mark highlight'}
-                      className="text-white hover:text-yellow-400"
-                    >
-                      {p.isHighlight ? (
-                        <Star className="w-4 h-4 fill-current text-yellow-400" />
-                      ) : (
-                        <StarOff className="w-4 h-4" />
+              {gallery.photos.map((p) => {
+                const isCover = String(gallery.coverPhotoId || '') === String(p._id);
+                return (
+                  <div
+                    key={p._id}
+                    className={`relative group bg-slate-100 rounded-lg overflow-hidden aspect-square ${
+                      isCover ? 'ring-2 ring-red-500' : ''
+                    }`}
+                  >
+                    {p.previewUrl ? (
+                      <img
+                        src={p.previewUrl}
+                        alt={p.originalName || ''}
+                        loading="lazy"
+                        key={p.previewUrl}
+                        className="absolute inset-0 w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className="absolute inset-0 flex items-center justify-center text-slate-400">
+                        <ImageIcon className="w-8 h-8" />
+                      </div>
+                    )}
+                    <div className="absolute top-1.5 left-1.5 flex gap-1">
+                      {isCover && (
+                        <div
+                          title="Cover photo"
+                          className="bg-red-600 text-white text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded inline-flex items-center gap-1"
+                        >
+                          <Crown className="w-3 h-3" />
+                          Cover
+                        </div>
                       )}
-                    </button>
-                    <button
-                      onClick={() => removePhoto(p._id)}
-                      title="Delete"
-                      className="text-white hover:text-red-400"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    </div>
+                    {p.isHighlight && (
+                      <div className="absolute top-1.5 right-1.5">
+                        <Star className="w-4 h-4 fill-current text-yellow-400 drop-shadow" />
+                      </div>
+                    )}
+                    <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-2 flex items-center justify-between opacity-0 group-hover:opacity-100 transition-opacity">
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={() => toggleHighlight(p._id, p.isHighlight)}
+                          title={p.isHighlight ? 'Unhighlight' : 'Mark highlight'}
+                          className="text-white hover:text-yellow-400"
+                        >
+                          {p.isHighlight ? (
+                            <Star className="w-4 h-4 fill-current text-yellow-400" />
+                          ) : (
+                            <StarOff className="w-4 h-4" />
+                          )}
+                        </button>
+                        <button
+                          onClick={() => setCover(isCover ? null : p._id)}
+                          title={isCover ? 'Remove as cover' : 'Set as cover'}
+                          className={`text-white ${isCover ? 'text-red-400' : 'hover:text-red-400'}`}
+                        >
+                          <Crown className={`w-4 h-4 ${isCover ? 'fill-current' : ''}`} />
+                        </button>
+                      </div>
+                      <button
+                        onClick={() => removePhoto(p._id)}
+                        title="Delete"
+                        className="text-white hover:text-red-400"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

@@ -29,6 +29,9 @@ const gallerySchema = new mongoose.Schema(
     token: { type: String, required: true, unique: true, index: true },
     passwordHash: { type: String, default: '' },
     expiresAt: { type: Date, default: null },
+    // Photo used for the cover hero. Null = fall back to the first photo
+    // at render time so admin doesn't HAVE to pick one.
+    coverPhotoId: { type: mongoose.Schema.Types.ObjectId, default: null },
     settings: { type: settingsSchema, default: () => ({}) },
     photos: { type: [photoSchema], default: [] },
   },
