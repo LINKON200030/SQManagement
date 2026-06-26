@@ -294,6 +294,8 @@ function GalleryDetailModal({ gallery: initial, onClose, onChanged }) {
   const [uploadPct, setUploadPct] = useState(0);
   const [uploadErrors, setUploadErrors] = useState([]);
   const [uploadStatus, setUploadStatus] = useState(null);
+  const [confirmDeleteGallery, setConfirmDeleteGallery] = useState(false);
+  const [deletingGallery, setDeletingGallery] = useState(false);
   const [copied, setCopied] = useState(false);
   const fileInputRef = useRef(null);
   const dropRef = useRef(null);
@@ -399,6 +401,24 @@ function GalleryDetailModal({ gallery: initial, onClose, onChanged }) {
     setBusy(false);
     setUploadPct(0);
     setUploadStatus(null);
+  };
+
+  const deleteGallery = async () => {
+    if (!confirmDeleteGallery) {
+      setConfirmDeleteGallery(true);
+      return;
+    }
+    setDeletingGallery(true);
+    setError('');
+    try {
+      await galleryService.remove(gallery._id);
+      onChanged();
+      onClose();
+    } catch (err) {
+      setError(err.response?.data?.message || err.message);
+      setDeletingGallery(false);
+      setConfirmDeleteGallery(false);
+    }
   };
 
   const setCover = async (photoId) => {
@@ -683,6 +703,32 @@ function GalleryDetailModal({ gallery: initial, onClose, onChanged }) {
             </div>
             <p className="text-xs text-slate-500 mt-1">Press Enter to save.</p>
           </Field>
+
+          <div className="mt-8 pt-6 border-t border-slate-200">
+            <p className="text-xs font-bold uppercase tracking-wider text-red-600 mb-1">Danger zone</p>
+            <p className="text-sm text-slate-600 mb-3">
+              Permanently delete this gallery and all {gallery.photos.length} photo
+              {gallery.photos.length === 1 ? '' : 's'}. The share link will stop working.
+              This cannot be undone.
+            </p>
+            <button
+              onClick={deleteGallery}
+              onBlur={() => setConfirmDeleteGallery(false)}
+              disabled={deletingGallery}
+              className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-colors ${
+                confirmDeleteGallery
+                  ? 'bg-red-600 hover:bg-red-700 text-white'
+                  : 'bg-white border border-red-300 text-red-600 hover:bg-red-50'
+              } disabled:opacity-50`}
+            >
+              <Trash2 className="w-4 h-4" />
+              {deletingGallery
+                ? 'Deleting…'
+                : confirmDeleteGallery
+                  ? 'Click again to confirm delete'
+                  : 'Delete gallery'}
+            </button>
+          </div>
         </div>
       )}
 
