@@ -20,6 +20,9 @@ import {
 } from 'lucide-react';
 import { galleryService, apiBaseUrl } from '../../services/api';
 
+const UPLOAD_CONCURRENCY = 3;
+const MAX_FILE_MB = 25;
+
 const fmtDate = (d) =>
   d ? new Date(d).toLocaleDateString('en-GB', { year: 'numeric', month: 'short', day: 'numeric' }) : '—';
 
@@ -297,6 +300,7 @@ function GalleryDetailModal({ gallery: initial, onClose, onChanged }) {
   const [orders, setOrders] = useState([]);
   const [uploadPct, setUploadPct] = useState(0);
   const [uploadErrors, setUploadErrors] = useState([]);
+  const [uploadStatus, setUploadStatus] = useState(null);
   const [copied, setCopied] = useState(false);
   const fileInputRef = useRef(null);
   const dropRef = useRef(null);
@@ -324,33 +328,76 @@ function GalleryDetailModal({ gallery: initial, onClose, onChanged }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
 
+  // Each file is its own POST so the network upload of file N+1 overlaps
+  // with the sharp/R2 work on file N, and one bad file never blocks the rest.
   const upload = async (files) => {
     const arr = Array.from(files || []).filter((f) => f.type.startsWith('image/'));
     if (!arr.length) return;
-    if (arr.length > 20) {
-      setError('Maximum 20 photos per upload — please split into smaller batches.');
-      return;
-    }
-    const oversize = arr.find((f) => f.size > 15 * 1024 * 1024);
+    const oversize = arr.find((f) => f.size > MAX_FILE_MB * 1024 * 1024);
     if (oversize) {
-      setError(`"${oversize.name}" is over 15 MB — please resize first.`);
+      setError(`"${oversize.name}" is over ${MAX_FILE_MB} MB — please resize first.`);
       return;
     }
+
     setBusy(true);
     setError('');
     setUploadErrors([]);
+
+    // Track per-file bytes uploaded so the overall % bar reflects real progress
+    // across the parallel pipeline rather than the last file finished.
+    const totalBytes = arr.reduce((sum, f) => sum + f.size, 0) || 1;
+    const fileBytes = new Array(arr.length).fill(0);
+    const tickPct = () => {
+      const done = fileBytes.reduce((a, b) => a + b, 0);
+      setUploadPct(Math.min(100, Math.round((done / totalBytes) * 100)));
+    };
     setUploadPct(0);
-    try {
-      const res = await galleryService.uploadPhotos(gallery._id, arr, setUploadPct);
-      if (res.data?.errors?.length) setUploadErrors(res.data.errors);
-      await refresh();
-      onChanged();
-    } catch (err) {
-      setError(err.response?.data?.message || err.message);
-    } finally {
-      setBusy(false);
-      setUploadPct(0);
-    }
+
+    const errors = [];
+    let completed = 0;
+    let inFlight = 0;
+    setUploadStatus({ total: arr.length, done: 0, inFlight: 0 });
+
+    const runOne = async (i) => {
+      inFlight += 1;
+      setUploadStatus({ total: arr.length, done: completed, inFlight });
+      try {
+        await galleryService.uploadPhoto(gallery._id, arr[i], (pct) => {
+          // pct from axios is 0-100 for THIS file; convert to bytes for the total bar
+          fileBytes[i] = (pct / 100) * arr[i].size;
+          tickPct();
+        });
+        fileBytes[i] = arr[i].size;
+      } catch (err) {
+        errors.push({
+          name: arr[i].name,
+          reason: err.response?.data?.message || err.message || 'Upload failed',
+        });
+        fileBytes[i] = arr[i].size; // count as done so the bar reaches 100
+      } finally {
+        completed += 1;
+        inFlight -= 1;
+        setUploadStatus({ total: arr.length, done: completed, inFlight });
+        tickPct();
+      }
+    };
+
+    // Simple concurrency-limited queue.
+    let nextIndex = 0;
+    const workers = Array.from({ length: Math.min(UPLOAD_CONCURRENCY, arr.length) }, async () => {
+      while (nextIndex < arr.length) {
+        const i = nextIndex++;
+        await runOne(i);
+      }
+    });
+    await Promise.all(workers);
+
+    if (errors.length) setUploadErrors(errors);
+    await refresh();
+    onChanged();
+    setBusy(false);
+    setUploadPct(0);
+    setUploadStatus(null);
   };
 
   const setCover = async (photoId) => {
@@ -480,9 +527,13 @@ function GalleryDetailModal({ gallery: initial, onClose, onChanged }) {
           >
             <Upload className="w-8 h-8 mx-auto text-slate-400 mb-2" />
             <p className="text-sm font-bold text-slate-700">
-              {busy ? `Uploading… ${uploadPct}%` : 'Drop photos here or click to choose'}
+              {busy
+                ? uploadStatus
+                  ? `Uploading ${uploadStatus.done} of ${uploadStatus.total} · ${uploadStatus.inFlight} in progress · ${uploadPct}%`
+                  : `Uploading… ${uploadPct}%`
+                : 'Drop photos here or click to choose'}
             </p>
-            <p className="text-xs text-slate-500 mt-1">JPEG/PNG · up to 15 MB each, 20 per batch · web variant resized + watermarked server-side</p>
+            <p className="text-xs text-slate-500 mt-1">JPEG/PNG · up to {MAX_FILE_MB} MB each · uploaded {UPLOAD_CONCURRENCY} at a time · web variant resized + watermarked server-side</p>
             <input
               ref={fileInputRef}
               type="file"

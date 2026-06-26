@@ -34,10 +34,29 @@ const buildWatermarkSvg = (width, height, text) => {
   );
 };
 
+// Predict the output dimensions of fit:'inside' + withoutEnlargement so we
+// can size the watermark SVG exactly right. EXIF orientation 5-8 swaps the
+// physical W/H, so account for that since the pipeline calls .rotate().
+const predictWebDimensions = (meta) => {
+  let srcW = meta.width || WEB_LONG_EDGE;
+  let srcH = meta.height || WEB_LONG_EDGE;
+  if (meta.orientation && meta.orientation >= 5 && meta.orientation <= 8) {
+    [srcW, srcH] = [srcH, srcW];
+  }
+  const ratio = Math.min(WEB_LONG_EDGE / srcW, WEB_LONG_EDGE / srcH, 1);
+  return {
+    width: Math.max(1, Math.round(srcW * ratio)),
+    height: Math.max(1, Math.round(srcH * ratio)),
+  };
+};
+
 // Generate the web-sized JPEG. If watermarkEnabled, burn a subtle diagonal
 // repeated watermark into the web variant only — never the full-res original.
+//
+// Single sharp pipeline (one decode) instead of resize → re-decode → composite
+// → re-encode. metadata() is a cheap header read, not a decode.
 const buildWebVariant = async (sourceBuffer, { watermarkEnabled, watermarkText = WATERMARK_TEXT } = {}) => {
-  const base = sharp(sourceBuffer, { failOn: 'none' })
+  let pipeline = sharp(sourceBuffer, { failOn: 'none' })
     .rotate() // honor EXIF orientation
     .resize({
       width: WEB_LONG_EDGE,
@@ -46,19 +65,14 @@ const buildWebVariant = async (sourceBuffer, { watermarkEnabled, watermarkText =
       withoutEnlargement: true,
     });
 
-  if (!watermarkEnabled) {
-    return base.jpeg({ quality: WEB_QUALITY, mozjpeg: true }).toBuffer();
+  if (watermarkEnabled) {
+    const meta = await sharp(sourceBuffer, { failOn: 'none' }).metadata();
+    const { width, height } = predictWebDimensions(meta);
+    const wm = buildWatermarkSvg(width, height, watermarkText);
+    pipeline = pipeline.composite([{ input: wm, gravity: 'center' }]);
   }
 
-  // Resize first, get dimensions, then composite the watermark sized to the result.
-  const resized = await base.jpeg({ quality: 95 }).toBuffer();
-  const meta = await sharp(resized).metadata();
-  const wm = buildWatermarkSvg(meta.width, meta.height, watermarkText);
-
-  return sharp(resized)
-    .composite([{ input: wm, gravity: 'center' }])
-    .jpeg({ quality: WEB_QUALITY, mozjpeg: true })
-    .toBuffer();
+  return pipeline.jpeg({ quality: WEB_QUALITY, mozjpeg: true }).toBuffer();
 };
 
 // Normalize originals to JPEG so the "full" download is a single predictable

@@ -15,14 +15,15 @@ const {
 } = require('../controllers/galleryAdminController');
 const printProducts = require('../controllers/printProductController');
 
-// Render free tier has 512 MB total RAM. multer.memoryStorage() holds every
-// file in the batch in memory, and sharp's decode buffer is roughly
-// width*height*3 bytes uncompressed (a 24MP JPEG decodes to ~70 MB).
-// Cap per-file size + batch size so the worst case (one decode in flight)
-// stays comfortably under the ceiling.
+// Frontend uploads files in parallel as individual POSTs (1 file each), so
+// peak per-request memory is bounded by one file's buffer + one sharp decode.
+// 25 MB covers straight-out-of-camera JPEGs from pro bodies (Canon R5/Sony A7R)
+// and the per-request memory at concurrency 3 stays well under Render's
+// 512 MB. files: 5 is the soft cap — the frontend sends 1, but allow a small
+// batch if someone POSTs the legacy endpoint directly.
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 15 * 1024 * 1024, files: 20 },
+  limits: { fileSize: 25 * 1024 * 1024, files: 5 },
 });
 
 router.use(requireAdmin);
@@ -39,7 +40,7 @@ router.delete('/galleries/:id', deleteGallery);
 router.post(
   '/galleries/:id/photos',
   (req, res, next) => {
-    upload.array('files', 20)(req, res, (err) => {
+    upload.array('files', 5)(req, res, (err) => {
       if (!err) return next();
       const code = err.code === 'LIMIT_FILE_SIZE' || err.code === 'LIMIT_FILE_COUNT' ? 413 : 400;
       console.warn('[gallery-upload] multer rejected:', err.code, err.message);
