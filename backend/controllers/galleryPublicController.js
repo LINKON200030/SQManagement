@@ -92,6 +92,9 @@ const renderGallery = async (req, res) => {
   const photos = await Promise.all(
     ordered.map(async (p) => ({
       _id: String(p._id),
+      // Original filename from the studio's PC (e.g. "IMG_1234.JPG"). Shown to
+      // the customer so they can reference the exact same file the studio has.
+      name: p.originalName || '',
       url: await getSignedGetUrl(p.r2KeyWeb, { expiresIn: SIGNED_URL_TTL }),
       isHighlight: Boolean(p.isHighlight),
     }))
@@ -241,10 +244,14 @@ const checkout = async (req, res) => {
     const qty = Math.max(1, Math.min(50, parseInt(item.quantity, 10) || 1));
 
     let photoId = null;
+    let photoName = null;
     if (item.photoId) {
       const photo = gallery.photos.id(item.photoId);
       if (!photo) return res.status(400).json({ message: 'Photo not in this gallery' });
       photoId = photo._id;
+      // Record the original filename so the studio knows exactly which file was
+      // ordered, even if the photo is later removed from the gallery.
+      photoName = photo.originalName || null;
     }
 
     lineItems.push({
@@ -253,7 +260,7 @@ const checkout = async (req, res) => {
         currency: p.currency || CURRENCY,
         unit_amount: p.priceMinor,
         product_data: {
-          name: p.name + (photoId ? ` (photo ${String(photoId).slice(-6)})` : ''),
+          name: p.name + (photoName ? ` (${photoName})` : ''),
           description: p.description || undefined,
         },
       },
@@ -262,6 +269,7 @@ const checkout = async (req, res) => {
       productSku: p.sku,
       productName: p.name,
       photoId,
+      photoName,
       quantity: qty,
       unitPriceMinor: p.priceMinor,
       kind: p.kind,

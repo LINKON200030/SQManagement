@@ -5,6 +5,7 @@ const lineItemSchema = new mongoose.Schema(
     productSku: { type: String, required: true },
     productName: { type: String, required: true },
     photoId: { type: mongoose.Schema.Types.ObjectId, default: null },
+    photoName: { type: String, default: null },
     quantity: { type: Number, default: 1, min: 1 },
     unitPriceMinor: { type: Number, required: true, min: 0 },
     kind: { type: String, enum: ['print', 'physical'], default: 'print' },
