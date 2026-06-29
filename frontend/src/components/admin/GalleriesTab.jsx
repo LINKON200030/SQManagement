@@ -792,7 +792,7 @@ function GalleryDetailModal({ gallery: initial, onClose, onChanged }) {
                                 </div>
                                 {i.photoId && (
                                   <div className="font-mono text-[10px] text-slate-400">
-                                    #{String(i.photoId).slice(-6)}
+                                    {i.photoName || `#${String(i.photoId).slice(-6)}`}
                                   </div>
                                 )}
                               </div>

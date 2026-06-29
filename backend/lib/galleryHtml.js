@@ -78,6 +78,8 @@ const layout = ({ title, body, extraHead = '' }) => `<!doctype html>
   .tile.faved .ribbon{opacity:1;color:var(--heart);background:rgba(255,255,255,0.92)}
   .tile.faved .ribbon svg{fill:var(--heart)}
   .tile .star{position:absolute;top:10px;left:10px;color:var(--gold);font-size:16px;text-shadow:0 1px 4px rgba(0,0,0,0.4)}
+  /* Tiny original-filename tag, very top-left of each photo. */
+  .tile .fname{position:absolute;top:6px;left:6px;max-width:calc(100% - 12px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;background:rgba(0,0,0,0.42);color:#fff;font-size:9px;font-weight:500;letter-spacing:0.02em;padding:2px 6px;border-radius:3px;pointer-events:none;backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px)}
   .tile.hidden{display:none}
   /* Note shown above the masonry grid (e.g. when filtering by Favorites). */
   .grid-note{margin:0 0 16px;padding:12px 16px;background:#fff;border:1px solid var(--line);border-left:3px solid var(--ink);border-radius:4px;color:var(--ink);font-size:13px;font-weight:500}
@@ -122,7 +124,7 @@ const layout = ({ title, body, extraHead = '' }) => `<!doctype html>
   .lb.open{display:flex}
   .lb img{max-width:96vw;max-height:88vh;object-fit:contain;box-shadow:0 30px 80px rgba(0,0,0,0.5)}
   .lb .lb-top{position:absolute;top:0;left:0;right:0;display:flex;align-items:center;justify-content:space-between;padding:18px 22px;color:#fff}
-  .lb .lb-top .counter{font-size:12px;letter-spacing:0.18em;opacity:0.8;text-transform:uppercase}
+  .lb .lb-top .counter{font-size:11px;letter-spacing:0.04em;opacity:0.85;text-transform:none;max-width:60vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .lb .lb-actions{display:flex;align-items:center;gap:2px}
   .lb .lb-actions button,.lb .lb-actions a{background:transparent;border:0;color:#fff;padding:9px;border-radius:999px;cursor:pointer;opacity:0.85;text-decoration:none;display:inline-flex;align-items:center;justify-content:center}
   .lb .lb-actions button:hover,.lb .lb-actions a:hover{opacity:1;background:rgba(255,255,255,0.08)}
@@ -261,6 +263,7 @@ const renderGalleryPage = ({
           .map(
             (p) => `<div class="tile${p.isHighlight ? ' has-star' : ''}" data-id="${escapeHtml(p._id)}" data-highlight="${p.isHighlight ? '1' : '0'}">
               <img src="${escapeHtml(p.url)}" alt="" loading="lazy" draggable="false" />
+              ${p.name ? `<div class="fname">${escapeHtml(p.name)}</div>` : ''}
               ${p.isHighlight ? '<div class="star">★</div>' : ''}
               <button class="ribbon" data-fav="${escapeHtml(p._id)}" aria-label="Favorite">${ICON.heart}</button>
             </div>`
@@ -427,7 +430,9 @@ const renderGalleryPage = ({
         if (lbIndex >= list.length) lbIndex = 0;
         const p = list[lbIndex];
         lbImg.src = p.url;
-        lbCounter.textContent = (lbIndex + 1) + ' / ' + list.length;
+        // Show the original filename (top-left) so the customer references the
+        // exact same file the studio has. Falls back to position if unnamed.
+        lbCounter.textContent = p.name || ((lbIndex + 1) + ' / ' + list.length);
         if (lbDl) lbDl.href = '/g/' + SLUG + '/download/' + p._id;
         lbFav.classList.toggle('active', FAVS.has(p._id));
       }
@@ -521,7 +526,7 @@ const renderGalleryPage = ({
         if (storeState.photoId) {
           const p = PHOTOS.find((x) => x._id === storeState.photoId);
           storePhotoPick.innerHTML = p
-            ? '<div class="photo-pick"><img src="' + p.url + '" alt="" /><div><div style="font-weight:600;color:var(--ink)">Print of selected photo</div><div>Photo #' + p._id.slice(-6) + '</div></div></div>'
+            ? '<div class="photo-pick"><img src="' + p.url + '" alt="" /><div><div style="font-weight:600;color:var(--ink)">Print of selected photo</div><div>' + (p.name || 'Selected photo') + '</div></div></div>'
             : '';
         } else {
           storePhotoPick.innerHTML = '<div class="photo-pick">Open a photo from the gallery first to attach it, or add a generic print.</div>';
@@ -556,6 +561,7 @@ const renderGalleryPage = ({
             sku: sel.sku, name: sel.name, priceMinor: sel.priceMinor,
             qty: storeState.qty,
             photoId: storeState.photoId || null,
+            photoName: storeState.photoId ? PHOTOS.find((p) => p._id === storeState.photoId)?.name : null,
             photoUrl: storeState.photoId ? PHOTOS.find((p) => p._id === storeState.photoId)?.url : null,
           });
         }
@@ -598,7 +604,7 @@ const renderGalleryPage = ({
               : '<div class="ph">no photo</div>') +
             '<div class="info">' +
               '<div class="nm">' + it.name + '</div>' +
-              '<div class="sub">' + fmtMoney(it.priceMinor) + ' each' + (it.photoId ? ' · photo #' + it.photoId.slice(-6) : '') + '</div>' +
+              '<div class="sub">' + fmtMoney(it.priceMinor) + ' each' + (it.photoName ? ' · ' + it.photoName : '') + '</div>' +
               '<div class="qty" style="margin-top:6px"><button type="button" data-act="dec" data-i="' + i + '">−</button><span>' + it.qty + '</span><button type="button" data-act="inc" data-i="' + i + '">+</button></div>' +
             '</div>' +
             '<div class="price">' + fmtMoney(it.priceMinor * it.qty) + '</div>' +

@@ -296,6 +296,8 @@ const listGalleryOrders = async (req, res) => {
     // Build a single map photoId -> r2Key so we sign each photo at most once
     // even if it appears across multiple orders.
     const photoMap = new Map(g.photos.map((p) => [String(p._id), p.r2KeyWeb]));
+    // photoId -> original filename, for orders placed before we stored it.
+    const nameMap = new Map(g.photos.map((p) => [String(p._id), p.originalName || '']));
     const urlCache = new Map();
     const signFor = async (photoId) => {
       const id = String(photoId);
@@ -314,6 +316,7 @@ const listGalleryOrders = async (req, res) => {
       for (const item of order.items) {
         if (item.photoId) {
           item.photoPreviewUrl = await signFor(item.photoId);
+          if (!item.photoName) item.photoName = nameMap.get(String(item.photoId)) || null;
         }
       }
     }

@@ -5,6 +5,13 @@ import useOrderStore from '../store/orderStore';
 
 const USERS = ['Linkon', 'Raki', 'Babu', 'Balli', 'Johana'];
 
+// The three fulfilment stages, shown as separate sections on this page.
+const STAGES = [
+  { status: 'In Processing', title: 'In Processing', accent: 'default', emptyLabel: 'in processing' },
+  { status: 'Ready for Collection', title: 'Ready for Collection', accent: 'red', emptyLabel: 'ready for collection' },
+  { status: 'Delivered', title: 'Delivered', accent: 'black', emptyLabel: 'delivered yet' },
+];
+
 const SELECT_CLASS =
   'text-sm border-2 border-slate-200 rounded-lg px-3 py-2 text-slate-700 bg-white focus:outline-none focus:border-red-400 focus:ring-4 focus:ring-red-50 transition-all font-medium hover:border-slate-300 cursor-pointer';
 
@@ -102,14 +109,20 @@ function AllOrdersPage() {
         </div>
       </div>
 
-      <OrderSection
-        title="Orders"
-        accent="black"
-        orders={orders}
-        loading={loading}
-        emptyMessage="No orders match the selected filters"
-        showCreated
-      />
+      {/* Orders grouped by stage: In Processing → Ready for Collection → Delivered */}
+      <div className="flex flex-col gap-6">
+        {STAGES.map((stage) => (
+          <OrderSection
+            key={stage.status}
+            title={stage.title}
+            accent={stage.accent}
+            orders={orders.filter((o) => o.status === stage.status)}
+            loading={loading}
+            emptyMessage={`No orders ${stage.emptyLabel}`}
+            showCreated
+          />
+        ))}
+      </div>
     </div>
   );
 }
