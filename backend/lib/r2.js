@@ -1,4 +1,10 @@
-const { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand } = require('@aws-sdk/client-s3');
+const {
+  S3Client,
+  PutObjectCommand,
+  DeleteObjectCommand,
+  DeleteObjectsCommand,
+  GetObjectCommand,
+} = require('@aws-sdk/client-s3');
 const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 const crypto = require('crypto');
 
@@ -47,6 +53,25 @@ const deleteObject = async (key) => {
   }
 };
 
+// Batch delete — one API call per 1000 keys instead of one per object.
+// Best-effort: a failed batch is logged, never thrown.
+const deleteObjects = async (keys = []) => {
+  const unique = [...new Set(keys.filter(Boolean))];
+  for (let i = 0; i < unique.length; i += 1000) {
+    const chunk = unique.slice(i, i + 1000);
+    try {
+      await client.send(
+        new DeleteObjectsCommand({
+          Bucket: bucket,
+          Delete: { Objects: chunk.map((Key) => ({ Key })), Quiet: true },
+        })
+      );
+    } catch (err) {
+      console.warn(`R2 batch delete failed (${chunk.length} keys):`, err.message);
+    }
+  }
+};
+
 const getObjectBuffer = async (key) => {
   const res = await client.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
   const chunks = [];
@@ -88,6 +113,7 @@ const galleryPhotoKey = ({ galleryId, variant, photoId, ext = 'jpg' }) =>
 module.exports = {
   uploadInvoicePdf,
   deleteObject,
+  deleteObjects,
   getObjectBuffer,
   getObjectStream,
   putObject,

@@ -8,6 +8,7 @@ const { generateSlug } = require('../lib/slug');
 const {
   putObject,
   deleteObject,
+  deleteObjects,
   getSignedGetUrl,
   galleryPhotoKey,
 } = require('../lib/r2');
@@ -183,14 +184,15 @@ const deleteGallery = async (req, res) => {
   try {
     const g = await Gallery.findById(req.params.id);
     if (!g) return res.status(404).json({ message: 'Gallery not found' });
-    // Best-effort R2 cleanup — don't block delete on it.
-    for (const p of g.photos) {
-      const keys = new Set([p.r2KeyWeb, p.r2KeyFull].filter(Boolean));
-      for (const k of keys) await deleteObject(k).catch(() => {});
-    }
+    // Delete the DB record FIRST so the gallery is gone even if R2 cleanup
+    // fails, then batch-delete the photo files (1 API call per 1000 keys —
+    // the old per-object loop timed out on large galleries).
+    const keys = g.photos.flatMap((p) => [p.r2KeyWeb, p.r2KeyFull]);
     await g.deleteOne();
+    await deleteObjects(keys);
     res.json({ message: 'Gallery deleted' });
   } catch (err) {
+    console.error('deleteGallery error:', err);
     res.status(500).json({ message: err.message });
   }
 };
@@ -210,6 +212,7 @@ const uploadPhotos = async (req, res) => {
 
     const created = [];
     const failed = [];
+    const newPhotos = [];
     let order = g.photos.length;
 
     // No sharp, no resize, no watermark — the file goes straight to R2 as the
@@ -235,7 +238,7 @@ const uploadPhotos = async (req, res) => {
         await putObject({ key, body: file.buffer, contentType: file.mimetype || 'image/jpeg' });
         console.log(`[gallery-upload] ${label} r2 ok ${file.buffer.length}B`);
 
-        g.photos.push({
+        newPhotos.push({
           _id: photoId,
           r2KeyWeb: key,
           r2KeyFull: key,
@@ -245,7 +248,6 @@ const uploadPhotos = async (req, res) => {
           isHighlight: false,
           order: order++,
         });
-        created.push({ _id: photoId, originalName: file.originalname || '', bytes: file.buffer.length });
         console.log(`[gallery-upload] ${label} done in ${Date.now() - fileStart}ms`);
       } catch (err) {
         console.error(`[gallery-upload] ${label} FAILED:`, err && err.stack ? err.stack : err);
@@ -254,7 +256,22 @@ const uploadPhotos = async (req, res) => {
       }
     }
 
-    if (created.length) await g.save();
+    // Atomic $push instead of doc.save(): the frontend uploads several files
+    // in parallel (one POST each), and concurrent save() calls on the same
+    // gallery doc collide on Mongoose's __v version check — some photos ended
+    // up in R2 but never in the gallery. $push can't lose writes.
+    let fresh = g;
+    if (newPhotos.length) {
+      fresh =
+        (await Gallery.findByIdAndUpdate(
+          g._id,
+          { $push: { photos: { $each: newPhotos } } },
+          { new: true }
+        )) || g;
+      created.push(
+        ...newPhotos.map((p) => ({ _id: p._id, originalName: p.originalName, bytes: p.bytes }))
+      );
+    }
     console.log(
       `[gallery-upload] done ok=${created.length} failed=${failed.length} totalMs=${Date.now() - t0}`
     );
@@ -263,7 +280,7 @@ const uploadPhotos = async (req, res) => {
       failedCount: failed.length,
       photos: created,
       errors: failed,
-      gallery: await adminGalleryView(g, { withPreviews: true }),
+      gallery: await adminGalleryView(fresh, { withPreviews: true }),
     });
   } catch (err) {
     console.error('[gallery-upload] handler error:', err && err.stack ? err.stack : err);
@@ -278,10 +295,16 @@ const deletePhoto = async (req, res) => {
     const photo = g.photos.id(req.params.photoId);
     if (!photo) return res.status(404).json({ message: 'Photo not found' });
     const keys = new Set([photo.r2KeyWeb, photo.r2KeyFull].filter(Boolean));
+    // Atomic $pull (not doc.save()) so a delete can't collide with a
+    // concurrent upload's write to the same gallery.
+    const fresh =
+      (await Gallery.findByIdAndUpdate(
+        g._id,
+        { $pull: { photos: { _id: photo._id } } },
+        { new: true }
+      )) || g;
     await Promise.all([...keys].map((k) => deleteObject(k).catch(() => {})));
-    photo.deleteOne();
-    await g.save();
-    res.json({ message: 'Photo deleted', gallery: await adminGalleryView(g, { withPreviews: true }) });
+    res.json({ message: 'Photo deleted', gallery: await adminGalleryView(fresh, { withPreviews: true }) });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
