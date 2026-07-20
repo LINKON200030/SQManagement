@@ -33,7 +33,8 @@ const layout = ({ title, body, extraHead = '' }) => `<!doctype html>
 
   /* ---------- HERO ---------- */
   .hero{position:relative;height:88vh;min-height:520px;width:100%;overflow:hidden;background:#0e0e10}
-  .hero .cover{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center;display:block;filter:brightness(0.78)}
+  .hero .cover-blur{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center;transform:scale(1.12);filter:brightness(0.5) blur(30px)}
+  .hero .cover{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;object-position:center;display:block;filter:brightness(0.82)}
   .hero .scrim{position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,0.18) 0%,rgba(0,0,0,0.10) 35%,rgba(0,0,0,0.45) 100%)}
   .hero .studio{position:absolute;top:24px;left:0;right:0;text-align:center;color:#fff;font-family:var(--sans);font-size:11px;font-weight:600;letter-spacing:0.28em;text-transform:uppercase;opacity:0.92}
   .hero .center{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);text-align:center;color:#fff;padding:0 24px;width:100%}
@@ -208,7 +209,8 @@ const renderGalleryPage = ({
     day: 'numeric',
   });
   const cover = coverUrl
-    ? `<img class="cover" src="${escapeHtml(coverUrl)}" alt="" />`
+    ? `<img class="cover-blur" src="${escapeHtml(coverUrl)}" alt="" aria-hidden="true" />
+      <img class="cover" src="${escapeHtml(coverUrl)}" alt="" />`
     : '';
 
   const body = `
