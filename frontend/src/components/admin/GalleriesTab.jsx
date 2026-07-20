@@ -665,6 +665,18 @@ function GalleryDetailModal({ gallery: initial, onClose, onChanged }) {
 
       {tab === 'settings' && (
         <div className="space-y-5 max-w-lg">
+          <Field label="Gallery title">
+            <input
+              type="text"
+              defaultValue={gallery.clientName || ''}
+              onBlur={(e) => {
+                const v = e.target.value.trim();
+                if (v && v !== gallery.clientName) updateField({ clientName: v });
+              }}
+              className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm"
+            />
+            <p className="text-xs text-slate-500 mt-1">Shown as the hero heading on the client gallery.</p>
+          </Field>
           <Toggle
             label="Allow downloads"
             description="Visitors can download originals (single photo or zip-all)."
