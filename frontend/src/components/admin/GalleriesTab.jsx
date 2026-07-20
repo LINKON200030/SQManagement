@@ -671,6 +671,14 @@ function GalleryDetailModal({ gallery: initial, onClose, onChanged }) {
             value={Boolean(gallery.settings?.downloadEnabled)}
             onChange={(v) => updateSetting('downloadEnabled', v)}
           />
+          <Field label="Shoot date">
+            <input
+              type="date"
+              defaultValue={gallery.shootDate ? new Date(gallery.shootDate).toISOString().slice(0, 10) : ''}
+              onBlur={(e) => e.target.value && updateField({ shootDate: e.target.value })}
+              className="border border-slate-300 rounded-lg px-3 py-2 text-sm"
+            />
+          </Field>
           <Field label="Expires (leave blank for never)">
             <input
               type="date"
