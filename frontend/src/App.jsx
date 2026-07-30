@@ -8,6 +8,7 @@ import AdminPage from './pages/AdminPage';
 import GalleriesPage from './pages/GalleriesPage';
 import KnowledgeHubPage from './pages/KnowledgeHubPage';
 import InvoicePage from './pages/InvoicePage';
+import CasesPage from './pages/CasesPage';
 
 function App() {
   return (
@@ -22,6 +23,7 @@ function App() {
           <Route path="/admin" element={<AdminPage />} />
           <Route path="/galleries" element={<GalleriesPage />} />
           <Route path="/knowledge" element={<KnowledgeHubPage />} />
+          <Route path="/cases" element={<CasesPage />} />
         </Route>
       </Routes>
     </Router>

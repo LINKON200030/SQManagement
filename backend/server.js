@@ -14,6 +14,7 @@ const websiteBookingRoutes = require('./routes/websiteBookingRoutes');
 const stripeWebhookRoutes = require('./routes/stripeWebhookRoutes');
 const galleryAdminRoutes = require('./routes/galleryAdminRoutes');
 const galleryPublicRoutes = require('./routes/galleryPublicRoutes');
+const caseRoutes = require('./routes/caseRoutes');
 
 dotenv.config();
 
@@ -43,6 +44,7 @@ app.use('/api/partners', partnerRoutes);
 app.use('/api/monthly-reports', monthlyReportRoutes);
 app.use('/api/knowledge', knowledgeRoutes);
 app.use('/api/announcements', announcementRoutes);
+app.use('/api/cases', caseRoutes);
 app.use('/api/expenses', expenseRoutes);
 app.use('/api/bookings/website', websiteBookingRoutes);
 app.use('/api/admin', galleryAdminRoutes);

@@ -59,6 +59,13 @@ export const announcementService = {
   remove: (id) => api.delete(`/announcements/${id}`),
 };
 
+export const caseService = {
+  getAll: (params = {}) => api.get('/cases', { params }),
+  create: (data) => api.post('/cases', data),
+  update: (id, data) => api.patch(`/cases/${id}`, data),
+  remove: (id) => api.delete(`/cases/${id}`),
+};
+
 export const expenseService = {
   uploadInvoice: (file) => {
     const fd = new FormData();
