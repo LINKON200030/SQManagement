@@ -1,4 +1,4 @@
-import { Menu, Search, Plus } from 'lucide-react';
+import { Menu, Search, Plus, LifeBuoy } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import AnnouncementBell from './AnnouncementBell';
 
@@ -33,6 +33,14 @@ function TopNavbar({ onMenuClick }) {
         {/* Right actions */}
         <div className="ml-auto flex items-center gap-2">
           <AnnouncementBell />
+          <button
+            onClick={() => navigate('/cases')}
+            className="inline-flex items-center gap-2 px-4 sm:px-5 py-2.5 rounded-lg text-sm font-bold text-black bg-white border border-slate-300 hover:bg-slate-50 shadow-sm active:scale-[0.98] transition-all"
+          >
+            <LifeBuoy className="w-4 h-4 text-red-600" />
+            <span className="hidden sm:inline">Raise a Case</span>
+            <span className="sm:hidden">Case</span>
+          </button>
           <button
             onClick={() => navigate('/orders/new')}
             className="inline-flex items-center gap-2 px-4 sm:px-5 py-2.5 rounded-lg text-sm font-bold text-white bg-red-600 hover:bg-red-700 shadow-md shadow-red-900/20 active:scale-[0.98] transition-all"
