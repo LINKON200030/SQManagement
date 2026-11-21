@@ -86,18 +86,31 @@ export const galleryService = {
   create: (data) => api.post('/admin/galleries', data),
   update: (id, data) => api.patch(`/admin/galleries/${id}`, data),
   remove: (id) => api.delete(`/admin/galleries/${id}`),
-  // Upload a single file. Used by the parallel-upload pipeline in the UI so
-  // network + server-side sharp overlap across files instead of being one big
-  // serial request.
-  uploadPhoto: (id, file, onProgress) => {
-    const fd = new FormData();
-    fd.append('files', file);
-    return api.post(`/admin/galleries/${id}/photos`, fd, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-      onUploadProgress: (e) => {
-        if (onProgress && e.total) onProgress(Math.round((e.loaded / e.total) * 100));
-      },
-    });
+  // Upload a single file. Used by the parallel-upload pipeline in the UI.
+  // Times out after 3 min (so a dropped connection can't hang the batch
+  // forever) and retries once on network errors / timeouts / 5xx — e.g. if
+  // Render restarts the backend mid-batch. 4xx (bad file) is not retried.
+  uploadPhoto: async (id, file, onProgress) => {
+    const attempt = () => {
+      const fd = new FormData();
+      fd.append('files', file);
+      return api.post(`/admin/galleries/${id}/photos`, fd, {
+        timeout: 180000,
+        onUploadProgress: (e) => {
+          if (onProgress && e.total) onProgress(Math.round((e.loaded / e.total) * 100));
+        },
+      });
+    };
+    try {
+      return await attempt();
+    } catch (err) {
+      const status = err.response?.status;
+      const retryable = !status || status >= 500;
+      if (!retryable) throw err;
+      await new Promise((r) => setTimeout(r, 3000));
+      if (onProgress) onProgress(0);
+      return attempt();
+    }
   },
   deletePhoto: (id, photoId) => api.delete(`/admin/galleries/${id}/photos/${photoId}`),
   orders: (id) => api.get(`/admin/galleries/${id}/orders`),

@@ -19,6 +19,11 @@ const client = new S3Client({
     accessKeyId: process.env.R2_ACCESS_KEY_ID,
     secretAccessKey: process.env.R2_SECRET_ACCESS_KEY,
   },
+  // AWS SDK >= 3.729 adds CRC32 checksums by default; for streamed bodies that
+  // means aws-chunked trailer encoding, which R2 doesn't fully support.
+  // Cloudflare's recommended setting for R2:
+  requestChecksumCalculation: 'WHEN_REQUIRED',
+  responseChecksumValidation: 'WHEN_REQUIRED',
 });
 
 const safeName = (name = 'invoice.pdf') =>
@@ -84,13 +89,16 @@ const getObjectStream = async (key) => {
   return res.Body;
 };
 
-const putObject = async ({ key, body, contentType }) => {
+// `body` can be a Buffer or a readable stream. Streams MUST pass contentLength
+// so the SDK can send a plain PUT instead of buffering / chunk-encoding.
+const putObject = async ({ key, body, contentType, contentLength }) => {
   await client.send(
     new PutObjectCommand({
       Bucket: bucket,
       Key: key,
       Body: body,
       ContentType: contentType,
+      ...(contentLength != null ? { ContentLength: contentLength } : {}),
     })
   );
   return { key };

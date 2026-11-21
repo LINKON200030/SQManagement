@@ -20,7 +20,9 @@ import {
 } from 'lucide-react';
 import { galleryService, apiBaseUrl } from '../../services/api';
 
-const UPLOAD_CONCURRENCY = 3;
+// 2 at a time keeps the Render free-tier backend comfortable while still
+// overlapping network transfers.
+const UPLOAD_CONCURRENCY = 2;
 const MAX_FILE_MB = 25;
 
 const fmtDate = (d) =>
@@ -332,7 +334,7 @@ function GalleryDetailModal({ gallery: initial, onClose, onChanged }) {
   }, [tab]);
 
   // Each file is its own POST so the network upload of file N+1 overlaps
-  // with the sharp/R2 work on file N, and one bad file never blocks the rest.
+  // with the R2 work on file N, and one bad file never blocks the rest.
   const upload = async (files) => {
     const arr = Array.from(files || []).filter((f) => f.type.startsWith('image/'));
     if (!arr.length) return;
