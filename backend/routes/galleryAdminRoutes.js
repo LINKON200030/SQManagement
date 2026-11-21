@@ -1,5 +1,8 @@
 const express = require('express');
 const multer = require('multer');
+const os = require('os');
+const fs = require('fs');
+const crypto = require('crypto');
 const router = express.Router();
 
 const { requireAdmin } = require('../lib/adminAuth');
@@ -16,13 +19,24 @@ const {
 const printProducts = require('../controllers/printProductController');
 
 // Frontend uploads files in parallel as individual POSTs (1 file each).
-// No sharp in the pipeline anymore — the buffer goes straight to R2 — so the
-// only memory consideration is the buffer itself. 40 MB covers straight-out-of-
-// camera JPEGs from pro bodies (Canon R5 ~30 MB, Sony A7R ~25 MB).
+// Files are written to a temp file on disk and STREAMED to R2 — never held in
+// RAM. memoryStorage kept 2-3 full-size photos in memory at once, which ran the
+// Render free-tier instance (512 MB) out of memory and killed the upload batch
+// after 2-3 pictures. 40 MB covers straight-out-of-camera JPEGs from pro bodies.
 const upload = multer({
-  storage: multer.memoryStorage(),
+  storage: multer.diskStorage({
+    destination: os.tmpdir(),
+    filename: (req, file, cb) => cb(null, `sqm-upload-${Date.now()}-${crypto.randomBytes(6).toString('hex')}`),
+  }),
   limits: { fileSize: 40 * 1024 * 1024, files: 5 },
 });
+
+// Always remove temp files, whatever happened to the request.
+const cleanupTempFiles = (req) => {
+  for (const f of req.files || []) {
+    if (f.path) fs.promises.unlink(f.path).catch(() => {});
+  }
+};
 
 router.use(requireAdmin);
 
@@ -38,6 +52,8 @@ router.delete('/galleries/:id', deleteGallery);
 router.post(
   '/galleries/:id/photos',
   (req, res, next) => {
+    res.on('finish', () => cleanupTempFiles(req));
+    res.on('close', () => cleanupTempFiles(req));
     upload.array('files', 5)(req, res, (err) => {
       if (!err) return next();
       const code = err.code === 'LIMIT_FILE_SIZE' || err.code === 'LIMIT_FILE_COUNT' ? 413 : 400;

@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+const fs = require('fs');
 const path = require('path');
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
@@ -235,8 +236,15 @@ const uploadPhotos = async (req, res) => {
         const ext = (path.extname(file.originalname || '').slice(1) || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
         const key = galleryPhotoKey({ galleryId: g._id, variant: 'original', photoId, ext });
 
-        await putObject({ key, body: file.buffer, contentType: file.mimetype || 'image/jpeg' });
-        console.log(`[gallery-upload] ${label} r2 ok ${file.buffer.length}B`);
+        // Stream from the temp file on disk — keeps memory flat no matter how
+        // big the photo is or how many upload in parallel.
+        await putObject({
+          key,
+          body: fs.createReadStream(file.path),
+          contentLength: file.size,
+          contentType: file.mimetype || 'image/jpeg',
+        });
+        console.log(`[gallery-upload] ${label} r2 ok ${file.size}B`);
 
         newPhotos.push({
           _id: photoId,
@@ -244,7 +252,7 @@ const uploadPhotos = async (req, res) => {
           r2KeyFull: key,
           originalName: file.originalname || '',
           contentType: file.mimetype || 'image/jpeg',
-          bytes: file.buffer.length,
+          bytes: file.size,
           isHighlight: false,
           order: order++,
         });
@@ -280,7 +288,9 @@ const uploadPhotos = async (req, res) => {
       failedCount: failed.length,
       photos: created,
       errors: failed,
-      gallery: await adminGalleryView(fresh, { withPreviews: true }),
+      // No signed previews here: signing a URL for EVERY photo on EVERY upload
+      // got slower as the gallery grew. The UI refetches once after the batch.
+      gallery: await adminGalleryView(fresh),
     });
   } catch (err) {
     console.error('[gallery-upload] handler error:', err && err.stack ? err.stack : err);
